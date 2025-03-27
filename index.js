@@ -21,6 +21,9 @@ let selectedApprovalIndex = 0;
 let currentPage = 0;
 const PAGE_SIZE = 8; // Number of approvals to show per page
 
+// Group approvals by token for better display
+let groupedApprovals = {};
+
 // Scanning stats to preserve after completion
 let scanStats = {
   totalEvents: 0,
@@ -259,54 +262,53 @@ function displayApprovalsList() {
     )
   );
 
-  // Display pagination info
-  console.log(chalk.cyan("Navigation:"));
-  console.log(chalk.cyan("  n - Next approval    p - Previous approval"));
-  console.log(chalk.cyan("  > - Next page        < - Previous page"));
-  console.log(chalk.cyan("  q - Quit\n"));
-
   // Calculate page bounds
   const startIdx = currentPage * PAGE_SIZE;
   const endIdx = Math.min(startIdx + PAGE_SIZE, approvalsList.length);
 
-  // Create a table-like structure for approvals
+  // Create a table-like structure for approvals with grouped tokens
   console.log(
     chalk.bold(
-      `  ${chalk.cyan("TOKEN")}${" ".repeat(16)}${chalk.yellow(
-        "SPENDER"
-      )}${" ".repeat(14)}${chalk.magenta("AMOUNT")}`
+      `  ${chalk.cyan("TOKEN/SPENDER")}${" ".repeat(24)}${chalk.magenta(
+        "AMOUNT"
+      )}`
     )
   );
   console.log("  " + "─".repeat(50));
 
-  // Display the approvals in a numbered list for current page
+  // Group approvals by token for the current page
+  let currentTokenAddress = null;
+
+  // Display the approvals in a grouped list for current page
   for (let i = startIdx; i < endIdx; i++) {
     const approval = approvalsList[i];
     const isSelected = i === selectedApprovalIndex;
-    const prefix = isSelected ? chalk.cyan("→ ") : "  ";
-    const tokenPart = isSelected
-      ? chalk.cyan.bold(formatToken(approval.tokenAddress))
-      : chalk.cyan(formatToken(approval.tokenAddress));
 
+    // Check if this is a new token
+    const isNewToken = currentTokenAddress !== approval.tokenAddress;
+    if (isNewToken) {
+      // Print token with a different style
+      console.log(`  ${chalk.cyan.bold(approval.tokenAddress)}`);
+      currentTokenAddress = approval.tokenAddress;
+    }
+
+    // Indent spenders under their token
+    const prefix = isSelected ? chalk.cyan("→ ") : "    ";
     const spenderPart = isSelected
       ? chalk.yellow.bold(formatToken(approval.spender))
       : chalk.yellow(formatToken(approval.spender));
 
     const amountPart = approval.isUnlimited
-      ? chalk.red.bold(isSelected ? "UNLIMITED" : "∞")
+      ? chalk.red.bold(isSelected ? "⚠️ UNLIMITED" : "⚠️ ∞")
       : chalk.green(formatAmount(approval.remainingApproval));
 
     // Pad spaces to align columns
-    const tokenSpacer = " ".repeat(
-      Math.max(2, 20 - formatToken(approval.tokenAddress).length)
-    );
     const spenderSpacer = " ".repeat(
-      Math.max(2, 20 - formatToken(approval.spender).length)
+      Math.max(2, 30 - formatToken(approval.spender).length)
     );
 
-    console.log(
-      `${prefix}${tokenPart}${tokenSpacer}${spenderPart}${spenderSpacer}${amountPart}`
-    );
+    // Use different indentation for spenders
+    console.log(`${prefix}${spenderPart}${spenderSpacer}${amountPart}`);
   }
 
   console.log("\n" + chalk.dim("  ℹ️  Select an approval to see details"));
@@ -380,20 +382,87 @@ function displayApprovalsList() {
       console.log(`  ${line1}${line2}`);
     }
   }
+
+  // Move navigation instructions to the bottom near the input prompt
+  console.log(
+    "\n" +
+      boxen(
+        [
+          chalk.cyan("Navigation Commands:"),
+          `${chalk.yellow("n")} - Next approval    ${chalk.yellow(
+            "p"
+          )} - Previous approval`,
+          `${chalk.yellow(">")} - Next page        ${chalk.yellow(
+            "<"
+          )} - Previous page`,
+          `${chalk.yellow("q")} - Quit             ${chalk.yellow("h")} - Help`,
+        ].join("\n"),
+        {
+          padding: { top: 1, bottom: 1, left: 2, right: 2 },
+          margin: { top: 0, bottom: 1 },
+          borderColor: "magenta",
+          borderStyle: "round",
+        }
+      )
+  );
+}
+
+// Help screen to display all commands
+function displayHelpScreen() {
+  console.clear();
+
+  console.log(
+    chalk.bold.cyan(figlet.textSync("HELP", { font: "ANSI Shadow" }))
+  );
+  console.log(chalk.bold.cyan("Ethereum Token Approval Scanner\n"));
+
+  const helpContent = boxen(
+    [
+      chalk.bold.yellow("COMMAND REFERENCE"),
+      "",
+      `${chalk.yellow("n")} - Move to the next approval in the list`,
+      `${chalk.yellow("p")} - Move to the previous approval in the list`,
+      `${chalk.yellow(">")} - Go to next page of approvals`,
+      `${chalk.yellow("<")} - Go to previous page of approvals`,
+      `${chalk.yellow("h")} - Show this help screen`,
+      `${chalk.yellow("q")} - Quit the application`,
+      "",
+      chalk.bold.yellow("ABOUT TOKEN APPROVALS"),
+      "",
+      `${chalk.white(
+        "Token approvals give dApps permission to spend your tokens."
+      )}`,
+      `${chalk.white(
+        "Unlimited approvals (∞) are a security risk as they never expire."
+      )}`,
+      `${chalk.white(
+        "Consider revoking unused approvals to improve your wallet security."
+      )}`,
+      "",
+      chalk.bold.yellow("PRESS ANY KEY TO RETURN"),
+    ].join("\n"),
+    {
+      padding: 1,
+      borderColor: "cyan",
+      borderStyle: "round",
+    }
+  );
+
+  console.log(helpContent);
+
+  // Wait for keypress to return
+  process.stdin.once("data", () => {
+    displayApprovalsList();
+    process.stdout.write("> ");
+  });
 }
 
 // Interactive mode with improved prompting
 function startInteractivePrompt() {
-  console.log(
-    boxen(chalk.bold.white("Interactive Mode - Enter commands below"), {
-      padding: { top: 0, bottom: 0, left: 1, right: 1 },
-      borderColor: "magenta",
-      borderStyle: "round",
-    })
-  );
+  // Interactive mode indicator is now moved into the navigation box at the bottom of displayApprovalsList
 
-  // Make sure we print the prompt to stdout
-  process.stdout.write("\n> ");
+  // Use a visually distinct prompt
+  process.stdout.write(chalk.cyan.bold("> "));
 
   // Use a different approach with process.stdin directly
   process.stdin.resume(); // Resume stdin stream
@@ -415,7 +484,7 @@ function startInteractivePrompt() {
         }
       }
       displayApprovalsList();
-      process.stdout.write("> ");
+      process.stdout.write(chalk.cyan.bold("> "));
     } else if (command === "p") {
       if (selectedApprovalIndex > 0) {
         selectedApprovalIndex--;
@@ -425,7 +494,7 @@ function startInteractivePrompt() {
         }
       }
       displayApprovalsList();
-      process.stdout.write("> ");
+      process.stdout.write(chalk.cyan.bold("> "));
     } else if (command === ">") {
       // Next page
       if ((currentPage + 1) * PAGE_SIZE < approvalsList.length) {
@@ -434,7 +503,7 @@ function startInteractivePrompt() {
         selectedApprovalIndex = currentPage * PAGE_SIZE;
       }
       displayApprovalsList();
-      process.stdout.write("> ");
+      process.stdout.write(chalk.cyan.bold("> "));
     } else if (command === "<") {
       // Previous page
       if (currentPage > 0) {
@@ -443,14 +512,19 @@ function startInteractivePrompt() {
         selectedApprovalIndex = currentPage * PAGE_SIZE;
       }
       displayApprovalsList();
-      process.stdout.write("> ");
+      process.stdout.write(chalk.cyan.bold("> "));
+    } else if (command === "h") {
+      // Show help screen
+      displayHelpScreen();
     } else if (command) {
       // Invalid command
-      console.log(chalk.red(`Invalid command: '${command}'. Try again.`));
-      process.stdout.write("> ");
+      console.log(
+        chalk.red(`Invalid command: '${command}'. Type 'h' for help.`)
+      );
+      process.stdout.write(chalk.cyan.bold("> "));
     } else {
       // Empty command, just redisplay prompt
-      process.stdout.write("> ");
+      process.stdout.write(chalk.cyan.bold("> "));
     }
   });
 
@@ -727,12 +801,62 @@ async function main() {
       }
     }
 
-    // Sort by unlimited approvals first, then by token address
+    // Sort approvals with priority: unlimited first, then by amount (largest to smallest), then by token
     approvalsList.sort((a, b) => {
+      // First by unlimited status (unlimited first)
       if (a.isUnlimited && !b.isUnlimited) return -1;
       if (!a.isUnlimited && b.isUnlimited) return 1;
+
+      // Then by remaining approval amount (highest first)
+      if (!a.isUnlimited && !b.isUnlimited) {
+        if (b.remainingApproval > a.remainingApproval) return 1;
+        if (b.remainingApproval < a.remainingApproval) return -1;
+      }
+
+      // Finally by token address
       return a.tokenAddress.localeCompare(b.tokenAddress);
     });
+
+    // Group approvals by token (for display)
+    groupedApprovals = approvalsList.reduce((groups, approval) => {
+      const { tokenAddress } = approval;
+      if (!groups[tokenAddress]) {
+        groups[tokenAddress] = [];
+      }
+      groups[tokenAddress].push(approval);
+      return groups;
+    }, {});
+
+    // Reorder the flat list to ensure tokens are grouped together
+    // while maintaining the priority order within each token group
+    const newOrderedList = [];
+
+    // Get unique token addresses in the order they first appear in the sorted list
+    const tokenOrder = [];
+    approvalsList.forEach((approval) => {
+      if (!tokenOrder.includes(approval.tokenAddress)) {
+        tokenOrder.push(approval.tokenAddress);
+      }
+    });
+
+    // Build new ordered list preserving inner sorting but grouping by token
+    tokenOrder.forEach((tokenAddress) => {
+      const approvalsForToken = groupedApprovals[tokenAddress];
+      // Sort approvals within each token group: unlimited first, then by amount
+      approvalsForToken.sort((a, b) => {
+        // First by unlimited status
+        if (a.isUnlimited && !b.isUnlimited) return -1;
+        if (!a.isUnlimited && b.isUnlimited) return 1;
+
+        // Then by remaining approval amount
+        return b.remainingApproval > a.remainingApproval ? 1 : -1;
+      });
+
+      newOrderedList.push(...approvalsForToken);
+    });
+
+    // Replace original list with regrouped list
+    approvalsList = newOrderedList;
 
     // Display summary
     console.log(
