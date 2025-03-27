@@ -1,0 +1,478 @@
+[
+  {
+    "name": "metall2",
+    "tier": "STONE",
+    "chain_id": 1750,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "base",
+    "tier": "GOLD",
+    "chain_id": 8453,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "lisk",
+    "tier": "BRONZE",
+    "chain_id": 1135,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "shimmer-evm",
+    "tier": "STONE",
+    "chain_id": 148,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "unichain",
+    "tier": "STONE",
+    "chain_id": 130,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "arbitrum-nova",
+    "tier": "BRONZE",
+    "chain_id": 42170,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "moonbeam",
+    "tier": "SILVER",
+    "chain_id": 1284,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "arbitrum",
+    "tier": "GOLD",
+    "chain_id": 42161,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "xdc",
+    "tier": "SILVER",
+    "chain_id": 50,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "arbitrum-sepolia",
+    "tier": "TESTNET",
+    "chain_id": 421614,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "fuel-mainnet",
+    "tier": "GOLD",
+    "chain_id": 9889,
+    "ecosystem": "fuel"
+  },
+  {
+    "name": "flare",
+    "tier": "STONE",
+    "chain_id": 14,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "fantom",
+    "tier": "BRONZE",
+    "chain_id": 250,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "zircuit",
+    "tier": "STONE",
+    "chain_id": 48900,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "fuji",
+    "tier": "TESTNET",
+    "chain_id": 43113,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "xdc-testnet",
+    "tier": "TESTNET",
+    "chain_id": 51,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "bsc-testnet",
+    "tier": "TESTNET",
+    "chain_id": 97,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "holesky-token-test",
+    "tier": "HIDDEN",
+    "chain_id": 17000,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "ink",
+    "tier": "STONE",
+    "chain_id": 57073,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "holesky",
+    "tier": "TESTNET",
+    "chain_id": 17000,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "megaeth-testnet",
+    "tier": "STONE",
+    "chain_id": 6342,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "zora",
+    "tier": "STONE",
+    "chain_id": 7777777,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "lukso",
+    "tier": "STONE",
+    "chain_id": 42,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "morph-holesky",
+    "tier": "TESTNET",
+    "chain_id": 2810,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "polygon-zkevm",
+    "tier": "STONE",
+    "chain_id": 1101,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "chiliz",
+    "tier": "BRONZE",
+    "chain_id": 8888,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "manta",
+    "tier": "STONE",
+    "chain_id": 169,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "rootstock",
+    "tier": "BRONZE",
+    "chain_id": 30,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "merlin",
+    "tier": "STONE",
+    "chain_id": 4200,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "linea",
+    "tier": "BRONZE",
+    "chain_id": 59144,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "morph",
+    "tier": "STONE",
+    "chain_id": 2818,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "aurora",
+    "tier": "STONE",
+    "chain_id": 1313161554,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "boba",
+    "tier": "STONE",
+    "chain_id": 288,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "saakuru",
+    "tier": "STONE",
+    "chain_id": 7225878,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "extrabud",
+    "tier": "INTERNAL",
+    "chain_id": 283027429,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "metis",
+    "tier": "STONE",
+    "chain_id": 1088,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "citrea-testnet",
+    "tier": "STONE",
+    "chain_id": 5115,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "blast-sepolia",
+    "tier": "TESTNET",
+    "chain_id": 168587773,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "polygon",
+    "tier": "GOLD",
+    "chain_id": 137,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "zeta",
+    "tier": "STONE",
+    "chain_id": 7000,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "avalanche",
+    "tier": "BRONZE",
+    "chain_id": 43114,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "celo",
+    "tier": "STONE",
+    "chain_id": 42220,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "polygon-amoy",
+    "tier": "BRONZE",
+    "chain_id": 80002,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "lukso-testnet",
+    "tier": "TESTNET",
+    "chain_id": 4201,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "cyber",
+    "tier": "STONE",
+    "chain_id": 7560,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "gnosis-traces",
+    "tier": "BRONZE",
+    "chain_id": 100,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "bsc",
+    "tier": "BRONZE",
+    "chain_id": 56,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "abstract",
+    "tier": "STONE",
+    "chain_id": 2741,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "gnosis-chiado",
+    "tier": "TESTNET",
+    "chain_id": 10200,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "internal-test-chain",
+    "tier": "HIDDEN",
+    "chain_id": 16858666,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "berachain",
+    "tier": "STONE",
+    "chain_id": 80094,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "unichain-sepolia",
+    "tier": "TESTNET",
+    "chain_id": 1301,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "mantle",
+    "tier": "STONE",
+    "chain_id": 5000,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "base-sepolia",
+    "tier": "TESTNET",
+    "chain_id": 84532,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "optimism-sepolia",
+    "tier": "TESTNET",
+    "chain_id": 11155420,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "galadriel-devnet",
+    "tier": "TESTNET",
+    "chain_id": 696969,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "fraxtal",
+    "tier": "STONE",
+    "chain_id": 252,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "gnosis",
+    "tier": "GOLD",
+    "chain_id": 100,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "darwinia",
+    "tier": "STONE",
+    "chain_id": 46,
+    "additional_features": ["TRACES"],
+    "ecosystem": "evm"
+  },
+  {
+    "name": "harmony-shard-0",
+    "tier": "STONE",
+    "chain_id": 1666600000,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "sophon-testnet",
+    "tier": "TESTNET",
+    "chain_id": 531050104,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "eth",
+    "tier": "GOLD",
+    "chain_id": 1,
+    "additional_features": ["TRACES"],
+    "ecosystem": "evm"
+  },
+  {
+    "name": "mev-commit",
+    "tier": "STONE",
+    "chain_id": 17864,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "opbnb",
+    "tier": "STONE",
+    "chain_id": 204,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "optimism",
+    "tier": "GOLD",
+    "chain_id": 10,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "mode",
+    "tier": "STONE",
+    "chain_id": 34443,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "monad-testnet",
+    "tier": "GOLD",
+    "chain_id": 10143,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "zksync",
+    "tier": "BRONZE",
+    "chain_id": 324,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "blast",
+    "tier": "BRONZE",
+    "chain_id": 81457,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "sophon",
+    "tier": "BRONZE",
+    "chain_id": 50104,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "moonbase-alpha",
+    "tier": "STONE",
+    "chain_id": 1287,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "kroma",
+    "tier": "STONE",
+    "chain_id": 255,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "sepolia",
+    "tier": "BRONZE",
+    "chain_id": 11155111,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "berachain-bartio",
+    "tier": "TESTNET",
+    "chain_id": 80084,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "soneium",
+    "tier": "STONE",
+    "chain_id": 1868,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "scroll",
+    "tier": "BRONZE",
+    "chain_id": 534352,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "hyperliquid",
+    "tier": "BRONZE",
+    "chain_id": 645749,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "hyperliquid-temp",
+    "tier": "BRONZE",
+    "chain_id": 645748,
+    "ecosystem": "evm"
+  },
+  {
+    "name": "pharos-devnet",
+    "tier": "STONE",
+    "chain_id": 50002,
+    "ecosystem": "evm"
+  }
+]

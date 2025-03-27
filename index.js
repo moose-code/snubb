@@ -17,6 +17,7 @@ import readline from "readline";
 import boxen from "boxen";
 import fs from "fs";
 import path from "path";
+import Table from "cli-table3";
 
 // Import extraRpcs dynamically
 let extraRpcs = {};
@@ -31,36 +32,6 @@ try {
     chalk.yellow(`Warning: Could not load extraRpcs.js: ${error.message}`)
   );
 }
-
-// Chain information with safe chalk colors
-const SUPPORTED_CHAINS = {
-  1: {
-    name: "Ethereum",
-    color: "cyan",
-    hypersyncUrl: "http://1.hypersync.xyz",
-  },
-  10: {
-    name: "Optimism",
-    color: "redBright",
-    hypersyncUrl: "http://10.hypersync.xyz",
-  },
-  137: {
-    name: "Polygon",
-    color: "magenta",
-    hypersyncUrl: "http://137.hypersync.xyz",
-  },
-  56: { name: "BSC", color: "yellow", hypersyncUrl: "http://56.hypersync.xyz" },
-  42161: {
-    name: "Arbitrum",
-    color: "blue",
-    hypersyncUrl: "http://42161.hypersync.xyz",
-  },
-  43114: {
-    name: "Avalanche",
-    color: "red",
-    hypersyncUrl: "http://43114.hypersync.xyz",
-  },
-};
 
 // List of safe chalk colors for dynamically assigned chains
 const SAFE_COLORS = [
@@ -79,6 +50,117 @@ const SAFE_COLORS = [
   "cyanBright",
   "whiteBright",
 ];
+
+// Load chain data from networkCache.json or fetch from API
+let networkData = [];
+try {
+  const networkCachePath = path.resolve("./networkCache.json");
+  if (fs.existsSync(networkCachePath)) {
+    networkData = JSON.parse(fs.readFileSync(networkCachePath, "utf8"));
+  } else {
+    // In a production app, we'd fetch from API here
+    console.warn(chalk.yellow("Warning: Could not find networkCache.json"));
+  }
+} catch (error) {
+  console.warn(
+    chalk.yellow(`Warning: Could not load networkCache.json: ${error.message}`)
+  );
+}
+
+// List of preferred chains to include by default
+const PREFERRED_CHAINS = [
+  "eth",
+  "optimism",
+  "arbitrum",
+  "polygon",
+  "gnosis",
+  "xdc",
+  "unichain",
+  "avalanche",
+];
+
+// Create a map of name to chain data for quick lookup
+const chainNameToData = {};
+networkData.forEach((chain) => {
+  chainNameToData[chain.name] = chain;
+});
+
+// Create dynamic SUPPORTED_CHAINS object with colors
+const SUPPORTED_CHAINS = {};
+
+// Add preferred chains first in the specified order
+PREFERRED_CHAINS.forEach((chainName, index) => {
+  const chain = chainNameToData[chainName];
+  if (chain) {
+    // Assign a color from the safe colors array, cycling through them if needed
+    const colorIndex = index % SAFE_COLORS.length;
+    const color = SAFE_COLORS[colorIndex];
+
+    // Special color assignments for well-known chains
+    let assignedColor = color;
+    if (chainName === "eth") assignedColor = "cyan";
+    else if (chainName === "optimism") assignedColor = "redBright";
+    else if (chainName === "polygon") assignedColor = "magenta";
+    else if (chainName === "arbitrum") assignedColor = "blue";
+    else if (chainName === "base") assignedColor = "blue";
+    else if (chainName === "gnosis") assignedColor = "green";
+    else if (chainName === "avalanche") assignedColor = "red";
+
+    SUPPORTED_CHAINS[chain.chain_id] = {
+      name: chain.name.charAt(0).toUpperCase() + chain.name.slice(1), // Capitalize first letter
+      color: assignedColor,
+      hypersyncUrl: `http://${chain.chain_id}.hypersync.xyz`,
+    };
+  }
+});
+
+// If no chains were loaded, provide fallbacks for core chains
+if (Object.keys(SUPPORTED_CHAINS).length === 0) {
+  console.warn(chalk.yellow("Warning: Using fallback chain configuration"));
+  // Fallback to core chains
+  const fallbackChains = {
+    1: {
+      name: "Ethereum",
+      color: "cyan",
+      hypersyncUrl: "http://1.hypersync.xyz",
+    },
+    10: {
+      name: "Optimism",
+      color: "redBright",
+      hypersyncUrl: "http://10.hypersync.xyz",
+    },
+    137: {
+      name: "Polygon",
+      color: "magenta",
+      hypersyncUrl: "http://137.hypersync.xyz",
+    },
+    42161: {
+      name: "Arbitrum",
+      color: "blue",
+      hypersyncUrl: "http://42161.hypersync.xyz",
+    },
+    8453: {
+      name: "Base",
+      color: "greenBright",
+      hypersyncUrl: "http://8453.hypersync.xyz",
+    },
+    100: {
+      name: "Gnosis",
+      color: "green",
+      hypersyncUrl: "http://100.hypersync.xyz",
+    },
+    43114: {
+      name: "Avalanche",
+      color: "red",
+      hypersyncUrl: "http://43114.hypersync.xyz",
+    },
+  };
+
+  Object.assign(SUPPORTED_CHAINS, fallbackChains);
+}
+
+// Get default chain IDs string
+const DEFAULT_CHAIN_IDS = Object.keys(SUPPORTED_CHAINS).join(",");
 
 // Cache for token metadata
 const tokenMetadataCache = new Map();
@@ -282,7 +364,7 @@ const rl = readline.createInterface({
   terminal: true,
 });
 
-// CLI setup
+// CLI setup - note the change to use DEFAULT_CHAIN_IDS
 const program = new Command();
 program
   .name("revoke-approvals")
@@ -291,8 +373,8 @@ program
   .option("-a, --address <address>", "Ethereum address to check approvals for")
   .option(
     "-c, --chains <chainIds>",
-    "Comma-separated chain IDs to scan (default: 1,10,137)",
-    "1,10,137"
+    "Comma-separated chain IDs to scan",
+    DEFAULT_CHAIN_IDS
   )
   .parse(process.argv);
 
@@ -320,7 +402,7 @@ if (!TARGET_ADDRESS) {
   console.log(chalk.yellow("Options:"));
   console.log(
     chalk.green(
-      "  --chains <chainIds>  Comma-separated chain IDs to scan (default: 1,10,137)\n"
+      `  --chains <chainIds>  Comma-separated chain IDs to scan (default: ${DEFAULT_CHAIN_IDS})\n`
     )
   );
 
@@ -333,9 +415,14 @@ const CHAIN_IDS = options.chains
   .map((id) => parseInt(id.trim()))
   .filter((id) => SUPPORTED_CHAINS[id]);
 
-// If no valid chains, use Ethereum mainnet
+// If no valid chains, use the first available chain
 if (CHAIN_IDS.length === 0) {
-  CHAIN_IDS.push(1);
+  const firstChainId = Object.keys(SUPPORTED_CHAINS)[0];
+  if (firstChainId) {
+    CHAIN_IDS.push(parseInt(firstChainId));
+  } else {
+    CHAIN_IDS.push(1); // Fallback to Ethereum mainnet
+  }
 }
 
 // Normalize address
@@ -547,45 +634,56 @@ async function displayApprovalsList() {
     }
   }
 
-  // Display key stats in a more compact format
+  // Display key stats using cli-table3 for professional formatting
   console.log(chalk.bold("\nSummary:"));
 
-  // Create a compact table header
-  console.log(
-    `  ${chalk.cyan("CHAIN".padEnd(12))} ${chalk.cyan(
-      "HEIGHT".padEnd(12)
-    )} ${chalk.cyan("EVENTS".padEnd(12))} ${chalk.cyan(
-      "TIME".padEnd(8)
-    )} ${chalk.cyan("APPROVALS")}`
-  );
-  console.log(`  ${"─".repeat(55)}`);
+  // Create a new table instance with proper styling
+  const statsTable = new Table({
+    head: [
+      chalk.cyan("CHAIN"),
+      chalk.cyan("HEIGHT"),
+      chalk.cyan("EVENTS"),
+      chalk.cyan("TIME"),
+      chalk.cyan("APPROVALS"),
+    ],
+    colWidths: [15, 15, 10, 8, 10],
+    style: {
+      head: [], // No additional styling for headers
+      border: [], // No additional styling for borders
+      compact: true, // More compact table with less padding
+    },
+  });
 
-  // Show chain stats in table format
+  // Add rows to the table from chain stats
   let totalApprovals = 0;
   for (const chainId of CHAIN_IDS) {
     if (chainStats[chainId]) {
       const stats = chainStats[chainId];
-      const chainName = SUPPORTED_CHAINS[chainId]?.name || `Chain ${chainId}`;
 
-      // Format values with padding for alignment
-      const chainDisplay = formatChainName(chainId).padEnd(12);
-      const heightDisplay = formatNumber(stats.height).padEnd(12);
-      const eventsDisplay = formatNumber(stats.totalEvents).padEnd(12);
-      const timeDisplay = `${(stats.endTime / 1000).toFixed(1)}s`.padEnd(8);
-
-      console.log(
-        `  ${chainDisplay} ${chalk.white(heightDisplay)} ${chalk.white(
-          eventsDisplay
-        )} ${chalk.white(timeDisplay)} ${chalk.white(stats.approvalsCount)}`
-      );
+      // Add a row with colored chain name and right-aligned numeric data
+      statsTable.push([
+        formatChainName(chainId), // Already has color applied
+        formatNumber(stats.height),
+        formatNumber(stats.totalEvents),
+        `${(stats.endTime / 1000).toFixed(1)}s`,
+        stats.approvalsCount.toString(),
+      ]);
 
       totalApprovals += stats.approvalsCount;
     }
   }
 
-  console.log(`  ${"─".repeat(55)}`);
-  console.log(`  ${"TOTAL".padEnd(36)} ${chalk.bold.white(totalApprovals)}`);
+  // Add a totals row
+  statsTable.push([
+    chalk.bold("TOTAL"),
+    "",
+    "",
+    "",
+    chalk.bold.white(totalApprovals.toString()),
+  ]);
 
+  // Display the table
+  console.log(statsTable.toString());
   console.log(""); // Add spacing
 
   // Calculate page bounds
@@ -1159,7 +1257,7 @@ async function main() {
       }
     });
 
-    // Sort approvals with priority: by chain, by token, unlimited first, then largest amounts
+    // Sort approvals with priority: by chain, unlimited first within a token, then largest amounts
     approvalsList.sort((a, b) => {
       // First by chain ID
       if (a.chainId !== b.chainId) {
@@ -1227,15 +1325,30 @@ function displayScanProgress() {
       const eventsPerSecond =
         stats.totalEvents > 0 ? Math.round(stats.totalEvents / elapsedTime) : 0;
 
-      // Use a different format for in-progress chains
+      // Format numbers with consistent width
+      const blockDisplay = `${formatNumber(
+        stats.lastBlockSeen || 0
+      )}/${formatNumber(stats.height)}`.padEnd(20);
+      const eventsDisplay = formatNumber(stats.totalEvents).padEnd(8);
+      const speedDisplay = `${formatNumber(eventsPerSecond)}/s`.padEnd(10);
+
+      // Calculate progress percentage - ensure it's greater than 0 if any blocks processed
+      const progress = stats.lastBlockSeen
+        ? Math.max(0.01, stats.lastBlockSeen / stats.height)
+        : 0;
+
+      // Update progress bar
+      stats.progressBar = drawProgressBar(
+        progress,
+        40,
+        SUPPORTED_CHAINS[chainId]?.color || "cyan"
+      );
+
+      // Use a different format for in-progress chains with better alignment
       process.stdout.write(
-        `\r${formatChainName(chainId)}: ${
+        `\r${formatChainName(chainId).padEnd(15)}: ${
           stats.progressBar
-        } Block: ${formatNumber(stats.lastBlockSeen || 0)}/${formatNumber(
-          stats.height
-        )} | Events: ${formatNumber(stats.totalEvents)} | ${formatNumber(
-          eventsPerSecond
-        )}/s     `
+        } Block: ${blockDisplay} | Events: ${eventsDisplay} | ${speedDisplay}     `
       );
       process.stdout.write("\n");
     }
@@ -1243,20 +1356,31 @@ function displayScanProgress() {
     else if (stats.isComplete) {
       const elapsedTime = (stats.endTime / 1000).toFixed(1);
 
-      // Show completed chain with checkmark
+      // Format numbers with consistent width
+      const eventsDisplay = formatNumber(stats.totalEvents).padEnd(8);
+      const timeDisplay = `${elapsedTime}s`.padEnd(6);
+
+      // Ensure progress bar shows 100% for completed chains
+      stats.progressBar = drawProgressBar(
+        1.0,
+        40,
+        SUPPORTED_CHAINS[chainId]?.color || "cyan"
+      );
+
+      // Show completed chain with checkmark and better alignment
       process.stdout.write(
-        `\r${formatChainName(chainId)}: ${stats.progressBar} ${chalk.green(
+        `\r${formatChainName(chainId).padEnd(15)}: ${
+          stats.progressBar
+        } ${chalk.green(
           "✓"
-        )} Complete | Events: ${formatNumber(
-          stats.totalEvents
-        )} in ${elapsedTime}s        `
+        )} Complete | Events: ${eventsDisplay} in ${timeDisplay}        `
       );
       process.stdout.write("\n");
     }
     // If not yet started scanning
     else {
       process.stdout.write(
-        `\r${formatChainName(chainId)}: ${
+        `\r${formatChainName(chainId).padEnd(15)}: ${
           stats.progressBar
         } Waiting to begin scan...        `
       );
@@ -1437,6 +1561,9 @@ async function scanChain(chainId) {
 
   // Processing complete
   stats.endTime = performance.now() - stats.startTime;
+
+  // Ensure progress is 100% when complete
+  stats.progressBar = drawProgressBar(1.0, 40, colorName);
 
   return { approvals, transfersUsingApprovals };
 }

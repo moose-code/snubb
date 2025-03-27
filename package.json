@@ -28,6 +28,7 @@
     "boxen": "^8.0.1",
     "chalk": "^5.4.1",
     "cli-spinners": "^2.9.2",
+    "cli-table3": "^0.6.5",
     "commander": "^11.1.0",
     "figlet": "^1.8.0",
     "log-update": "^6.1.0",

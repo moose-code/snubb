@@ -26,6 +26,9 @@ importers:
       cli-spinners:
         specifier: ^2.9.2
         version: 2.9.2
+      cli-table3:
+        specifier: ^0.6.5
+        version: 0.6.5
       commander:
         specifier: ^11.1.0
         version: 11.1.0
