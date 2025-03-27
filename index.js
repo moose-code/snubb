@@ -461,29 +461,25 @@ async function displayApprovalsList() {
 
   // Group approvals by token for the current page
   let currentTokenAddress = null;
-  let currentTokenMetadata = null;
 
-  // Display the approvals in a grouped list for current page
+  // Display the approvals with token metadata when available
   for (let i = startIdx; i < endIdx; i++) {
     const approval = approvalsList[i];
     const isSelected = i === selectedApprovalIndex;
 
-    // Fetch token metadata if not already cached
-    if (currentTokenAddress !== approval.tokenAddress) {
-      currentTokenMetadata = await fetchTokenMetadata(
-        approval.tokenAddress,
-        CHAIN_ID
-      );
-    }
-
     // Check if this is a new token
     const isNewToken = currentTokenAddress !== approval.tokenAddress;
     if (isNewToken) {
-      // Print token with a different style and include name if available
+      // Try to get token metadata from cache first
+      const tokenMetadata = tokenMetadataCache.get(
+        `${CHAIN_ID}:${approval.tokenAddress}`
+      );
+
+      // Print token with name if available, otherwise use address
       const tokenDisplay =
-        currentTokenMetadata && currentTokenMetadata.success
-          ? `${chalk.cyan.bold(currentTokenMetadata.name)} (${chalk.cyan(
-              currentTokenMetadata.symbol
+        tokenMetadata && tokenMetadata.success
+          ? `${chalk.cyan.bold(tokenMetadata.name)} (${chalk.cyan(
+              tokenMetadata.symbol
             )})`
           : chalk.cyan.bold(approval.tokenAddress);
 
@@ -503,11 +499,14 @@ async function displayApprovalsList() {
       ? chalk.yellow.bold(formatToken(approval.spender))
       : chalk.yellow(formatToken(approval.spender));
 
+    // Get token metadata from cache if available for amount formatting
+    const tokenMetadata = tokenMetadataCache.get(
+      `${CHAIN_ID}:${approval.tokenAddress}`
+    );
+
     const amountPart = displayAsUnlimited
       ? chalk.red.bold(isSelected ? "⚠️ UNLIMITED" : "⚠️ ∞")
-      : chalk.green(
-          formatAmount(approval.remainingApproval, currentTokenMetadata)
-        );
+      : chalk.green(formatAmount(approval.remainingApproval, tokenMetadata));
 
     // Pad spaces to align columns
     const spenderSpacer = " ".repeat(
@@ -524,88 +523,13 @@ async function displayApprovalsList() {
   if (approvalsList.length > 0) {
     const approval = approvalsList[selectedApprovalIndex];
 
-    // Fetch token metadata for the selected approval
-    const tokenMetadata = await fetchTokenMetadata(
-      approval.tokenAddress,
-      CHAIN_ID
+    // Use cached token metadata if available
+    const tokenMetadata = tokenMetadataCache.get(
+      `${CHAIN_ID}:${approval.tokenAddress}`
     );
 
-    console.log(
-      "\n" +
-        boxen(chalk.bold.cyan("APPROVAL DETAILS"), {
-          padding: { top: 0, bottom: 0, left: 1, right: 1 },
-          borderColor: "green",
-          borderStyle: "round",
-        })
-    );
-
-    // Update unlimited flag for effectively unlimited values
-    const isEffectiveUnlimited = isEffectivelyUnlimited(
-      approval.remainingApproval
-    );
-    const displayAsUnlimited = approval.isUnlimited || isEffectiveUnlimited;
-
-    // Create a more readable single-column display
-    const detailsContent = [
-      // Token information
-      tokenMetadata && tokenMetadata.success
-        ? `${chalk.cyan.bold("Token:")} ${chalk.green(tokenMetadata.name)} (${
-            tokenMetadata.symbol
-          })`
-        : `${chalk.cyan.bold("Token:")} ${chalk.green(approval.tokenAddress)}`,
-
-      `${chalk.cyan.bold("Token Address:")} ${chalk.green(
-        approval.tokenAddress
-      )}`,
-      "",
-
-      // Spender information
-      `${chalk.cyan.bold("Spender Address:")} ${chalk.green(approval.spender)}`,
-      "",
-
-      // Approval amounts
-      chalk.cyan.bold("Approval Details:"),
-      `${chalk.yellow("Approved Amount:")} ${chalk.green(
-        displayAsUnlimited
-          ? "∞ (Unlimited)"
-          : formatAmount(approval.approvedAmount, tokenMetadata)
-      )}`,
-      `${chalk.yellow("Used Amount:")} ${chalk.green(
-        formatAmount(approval.transferredAmount, tokenMetadata)
-      )}`,
-      `${chalk.yellow("Remaining:")} ${
-        displayAsUnlimited
-          ? chalk.red.bold("∞ (UNLIMITED)")
-          : chalk.green(formatAmount(approval.remainingApproval, tokenMetadata))
-      }`,
-      "",
-
-      // Transaction information
-      chalk.cyan.bold("Transaction Details:"),
-      `${chalk.yellow("Block Number:")} ${approval.blockNumber}`,
-      `${chalk.yellow("Transaction Hash:")} ${approval.txHash}`,
-    ].join("\n");
-
-    // Display the details
-    console.log(
-      boxen(detailsContent, {
-        padding: 1,
-        borderColor: "blue",
-        borderStyle: "round",
-      })
-    );
-
-    // Display warning for unlimited approvals
-    if (displayAsUnlimited) {
-      console.log(
-        boxen(
-          chalk.bold.white(
-            "⚠️  UNLIMITED APPROVAL - This contract has unlimited access to this token in your wallet"
-          ),
-          { padding: 1, borderColor: "red", borderStyle: "round" }
-        )
-      );
-    }
+    // Display approval details with available metadata
+    displayApprovalDetails(approval, tokenMetadata || { success: false });
   }
 
   // Move navigation instructions to the bottom near the input prompt
@@ -630,6 +554,120 @@ async function displayApprovalsList() {
         }
       )
   );
+
+  // Start fetching metadata in the background
+  fetchTokenMetadataInBackground(startIdx, endIdx);
+}
+
+// Asynchronous function to fetch token metadata in background
+async function fetchTokenMetadataInBackground(startIdx, endIdx) {
+  // Collection of unique token addresses on the current page
+  const tokensToFetch = new Set();
+
+  // Collect all tokens that need metadata
+  for (let i = startIdx; i < endIdx; i++) {
+    if (i < approvalsList.length) {
+      const tokenAddress = approvalsList[i].tokenAddress;
+      const cacheKey = `${CHAIN_ID}:${tokenAddress}`;
+
+      // Only fetch tokens that aren't already in the cache
+      if (!tokenMetadataCache.has(cacheKey)) {
+        tokensToFetch.add(tokenAddress);
+      }
+    }
+  }
+
+  // If no tokens to fetch, we're done
+  if (tokensToFetch.size === 0) return;
+
+  // Fetch token metadata in parallel
+  const promises = Array.from(tokensToFetch).map(async (tokenAddress) => {
+    await fetchTokenMetadata(tokenAddress, CHAIN_ID);
+  });
+
+  // Wait for all fetches to complete then redraw the screen
+  await Promise.all(promises);
+  displayApprovalsList();
+}
+
+// Function to display approval details
+function displayApprovalDetails(approval, tokenMetadata) {
+  console.log(
+    "\n" +
+      boxen(chalk.bold.cyan("APPROVAL DETAILS"), {
+        padding: { top: 0, bottom: 0, left: 1, right: 1 },
+        borderColor: "green",
+        borderStyle: "round",
+      })
+  );
+
+  // Update unlimited flag for effectively unlimited values
+  const isEffectiveUnlimited = isEffectivelyUnlimited(
+    approval.remainingApproval
+  );
+  const displayAsUnlimited = approval.isUnlimited || isEffectiveUnlimited;
+
+  // Create a more readable single-column display
+  const detailsContent = [
+    // Token information
+    tokenMetadata && tokenMetadata.success
+      ? `${chalk.cyan.bold("Token:")} ${chalk.green(tokenMetadata.name)} (${
+          tokenMetadata.symbol
+        })`
+      : `${chalk.cyan.bold("Token:")} ${chalk.green(approval.tokenAddress)}`,
+
+    `${chalk.cyan.bold("Token Address:")} ${chalk.green(
+      approval.tokenAddress
+    )}`,
+    "",
+
+    // Spender information
+    `${chalk.cyan.bold("Spender Address:")} ${chalk.green(approval.spender)}`,
+    "",
+
+    // Approval amounts
+    chalk.cyan.bold("Approval Details:"),
+    `${chalk.yellow("Approved Amount:")} ${chalk.green(
+      displayAsUnlimited
+        ? "∞ (Unlimited)"
+        : formatAmount(approval.approvedAmount, tokenMetadata)
+    )}`,
+    `${chalk.yellow("Used Amount:")} ${chalk.green(
+      formatAmount(approval.transferredAmount, tokenMetadata)
+    )}`,
+    `${chalk.yellow("Remaining:")} ${
+      displayAsUnlimited
+        ? chalk.red.bold("∞ (UNLIMITED)")
+        : chalk.green(formatAmount(approval.remainingApproval, tokenMetadata))
+    }`,
+    "",
+
+    // Transaction information
+    chalk.cyan.bold("Transaction Details:"),
+    `${chalk.yellow("Block Number:")} ${approval.blockNumber}`,
+    `${chalk.yellow("Transaction Hash:")} ${approval.txHash}`,
+  ].join("\n");
+
+  // Display the details
+  console.log(
+    boxen(detailsContent, {
+      padding: 1,
+      borderColor: "blue",
+      borderStyle: "round",
+    })
+  );
+
+  // Display warning for unlimited approvals
+  if (displayAsUnlimited) {
+    console.log(
+      boxen(
+        chalk.bold.white(
+          "⚠️  UNLIMITED APPROVAL - This contract has unlimited access to this token in your wallet"
+        ),
+        { padding: 1, borderColor: "red", borderStyle: "round" }
+      )
+    );
+  }
 }
 
 // Help screen to display all commands
