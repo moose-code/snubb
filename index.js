@@ -72,7 +72,6 @@ const PREFERRED_CHAINS = [
   "eth",
   "optimism",
   "arbitrum",
-  "polygon",
   "gnosis",
   "xdc",
   "unichain",
@@ -627,6 +626,9 @@ const createQuery = (fromBlock) => ({
   joinMode: JoinMode.JoinTransactions,
 });
 
+// Add a new state variable near the other global variables
+let detailsExpanded = false;
+
 // Function to display the approvals list
 async function displayApprovalsList() {
   console.clear();
@@ -665,89 +667,11 @@ async function displayApprovalsList() {
     )
   );
 
-  // Create a table-like structure for approvals with grouped tokens
-  console.log(
-    chalk.bold(
-      `  ${chalk.cyan("CHAIN")}  ${chalk.cyan("TOKEN/SPENDER")}${" ".repeat(
-        38
-      )}${chalk.magenta("AMOUNT")}`
-    )
-  );
-  console.log("  " + "─".repeat(70));
+  // Create a more structured table for approvals with proper hierarchy
+  displayApprovalsTable(startIdx, endIdx);
 
-  // Group approvals by chain and token for the current page
-  let currentChainId = null;
-  let currentTokenAddress = null;
-
-  // Display the approvals with token metadata when available
-  for (let i = startIdx; i < endIdx; i++) {
-    const approval = approvalsList[i];
-    const isSelected = i === selectedApprovalIndex;
-
-    // Check if this is a new chain or token
-    const isNewChain = currentChainId !== approval.chainId;
-    const isNewToken =
-      currentTokenAddress !== approval.tokenAddress || isNewChain;
-
-    if (isNewChain) {
-      console.log(`  ${formatChainName(approval.chainId)}`);
-      currentChainId = approval.chainId;
-      currentTokenAddress = null; // Reset token tracking when chain changes
-    }
-
-    if (isNewToken) {
-      // Try to get token metadata from cache first
-      const tokenMetadata = tokenMetadataCache.get(
-        `${approval.chainId}:${approval.tokenAddress}`
-      );
-
-      // Print token with name if available, otherwise use address
-      const tokenDisplay =
-        tokenMetadata && tokenMetadata.success
-          ? `${chalk.cyan.bold(tokenMetadata.name)} (${chalk.cyan(
-              tokenMetadata.symbol
-            )})`
-          : chalk.cyan.bold(approval.tokenAddress);
-
-      // Indent tokens under their chain
-      console.log(`    ${tokenDisplay}`);
-      currentTokenAddress = approval.tokenAddress;
-    }
-
-    // Update unlimited flag for effectively unlimited values
-    const isEffectiveUnlimited = isEffectivelyUnlimited(
-      approval.remainingApproval
-    );
-    const displayAsUnlimited = approval.isUnlimited || isEffectiveUnlimited;
-
-    // Indent spenders under their token
-    const prefix = isSelected ? chalk.cyan("→ ") : "      ";
-    const spenderPart = isSelected
-      ? chalk.yellow.bold(formatToken(approval.spender))
-      : chalk.yellow(formatToken(approval.spender));
-
-    // Get token metadata from cache if available for amount formatting
-    const tokenMetadata = tokenMetadataCache.get(
-      `${approval.chainId}:${approval.tokenAddress}`
-    );
-
-    const amountPart = displayAsUnlimited
-      ? chalk.red.bold(isSelected ? "⚠️ UNLIMITED" : "⚠️ ∞")
-      : chalk.green(formatAmount(approval.remainingApproval, tokenMetadata));
-
-    // Pad spaces to align columns
-    const spenderSpacer = " ".repeat(
-      Math.max(2, 48 - formatToken(approval.spender).length)
-    );
-
-    // Use different indentation for spenders
-    console.log(`${prefix}${spenderPart}${spenderSpacer}${amountPart}`);
-  }
-
-  console.log("\n" + chalk.dim("  ℹ️  Select an approval to see details"));
-
-  // Display details of the selected approval
-  if (approvalsList.length > 0) {
+  // Display details of the selected approval only if expanded
+  if (approvalsList.length > 0 && detailsExpanded) {
     const approval = approvalsList[selectedApprovalIndex];
 
     // Use cached token metadata if available
@@ -757,6 +681,20 @@ async function displayApprovalsList() {
 
     // Display approval details with available metadata
     displayApprovalDetails(approval, tokenMetadata || { success: false });
+  } else if (approvalsList.length > 0) {
+    // Show a hint to expand details
+    console.log(
+      boxen(
+        chalk.dim(
+          "Press ENTER to view detailed information for the selected approval"
+        ),
+        {
+          padding: { top: 0, bottom: 0, left: 1, right: 1 },
+          borderColor: "blue",
+          borderStyle: "round",
+        }
+      )
+    );
   }
 
   // Move navigation instructions to the bottom near the input prompt
@@ -771,6 +709,7 @@ async function displayApprovalsList() {
           `${chalk.yellow(">")} - Next page        ${chalk.yellow(
             "<"
           )} - Previous page`,
+          `${chalk.yellow("ENTER")} - Show/hide details`,
           `${chalk.yellow("q")} - Quit             ${chalk.yellow("h")} - Help`,
         ].join("\n"),
         {
@@ -784,6 +723,116 @@ async function displayApprovalsList() {
 
   // Start fetching metadata in the background
   fetchTokenMetadataInBackground(startIdx, endIdx);
+}
+
+// Function to display approvals in a professionally formatted table
+function displayApprovalsTable(startIdx, endIdx) {
+  // Create a new table for approvals with clean styling
+  const approvalsTable = new Table({
+    head: [
+      chalk.cyan.bold("CHAIN"),
+      chalk.cyan.bold("TOKEN"),
+      chalk.cyan.bold("SPENDER"),
+      chalk.cyan.bold("AMOUNT"),
+    ],
+    colWidths: [10, 18, 23, 35],
+    style: {
+      head: [], // No additional styling for headers
+      border: [], // No additional styling for borders
+      compact: true, // More compact table
+    },
+    chars: {
+      top: "━",
+      "top-mid": "┳",
+      "top-left": "┏",
+      "top-right": "┓",
+      bottom: "━",
+      "bottom-mid": "┻",
+      "bottom-left": "┗",
+      "bottom-right": "┛",
+      left: "┃",
+      "left-mid": "",
+      mid: "",
+      "mid-mid": "",
+      right: "┃",
+      "right-mid": "",
+      middle: "┃",
+    },
+  });
+
+  // Keep track of current chain to handle grouping
+  let currentChainId = null;
+  let currentTokenAddress = null;
+
+  // Display the approvals with token metadata when available
+  for (let i = startIdx; i < endIdx; i++) {
+    const approval = approvalsList[i];
+    const isSelected = i === selectedApprovalIndex;
+
+    // Check if this is a new chain
+    const isNewChain = currentChainId !== approval.chainId;
+    const isNewToken =
+      currentTokenAddress !== approval.tokenAddress || isNewChain;
+
+    // Get token metadata
+    const tokenMetadata = tokenMetadataCache.get(
+      `${approval.chainId}:${approval.tokenAddress}`
+    );
+
+    // Format token display based on available metadata
+    const tokenDisplay =
+      tokenMetadata && tokenMetadata.success
+        ? `${chalk.cyan(tokenMetadata.symbol)}`
+        : chalk.cyan(approval.tokenAddress.slice(0, 6) + "...");
+
+    // Format spender display with selection indicator and truncation if needed
+    const spenderText = formatToken(approval.spender);
+    // Truncate long spender addresses to fit column
+    const displaySpender =
+      spenderText.length > 18
+        ? spenderText.slice(0, 8) + "..." + spenderText.slice(-8)
+        : spenderText;
+
+    const spenderDisplay = isSelected
+      ? chalk.yellow.bold(`→ ${displaySpender}`)
+      : chalk.yellow(displaySpender);
+
+    // Update unlimited flag for effectively unlimited values
+    const isEffectiveUnlimited = isEffectivelyUnlimited(
+      approval.remainingApproval
+    );
+    const displayAsUnlimited = approval.isUnlimited || isEffectiveUnlimited;
+
+    // Format amount display
+    const amountDisplay = displayAsUnlimited
+      ? isSelected
+        ? chalk.red.bold("⚠️ UNLIMITED")
+        : chalk.red.bold("⚠️ ∞")
+      : chalk.green(formatAmount(approval.remainingApproval, tokenMetadata));
+
+    // Handle chain grouping - only show chain name for the first entry of the chain
+    const chainCell = isNewChain ? formatChainName(approval.chainId) : "";
+
+    // Add row to table
+    approvalsTable.push([
+      chainCell,
+      tokenDisplay,
+      spenderDisplay,
+      amountDisplay,
+    ]);
+
+    // Update tracking variables
+    if (isNewChain) {
+      currentChainId = approval.chainId;
+    }
+
+    if (isNewToken) {
+      currentTokenAddress = approval.tokenAddress;
+    }
+  }
+
+  // Display the table
+  console.log(approvalsTable.toString());
 }
 
 // Function to display progress bars and summary table sequentially
@@ -1103,6 +1152,11 @@ function startInteractivePrompt() {
     } else if (command === "h") {
       // Show help screen
       displayHelpScreen();
+    } else if (command === "") {
+      // Enter key - toggle details view
+      detailsExpanded = !detailsExpanded;
+      displayApprovalsList();
+      process.stdout.write(chalk.cyan.bold("> "));
     } else if (command) {
       // Invalid command
       console.log(
