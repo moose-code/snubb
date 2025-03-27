@@ -1,10 +1,10 @@
 {
-  "name": "revoke-approvals",
+  "name": "snubb",
   "version": "1.0.0",
-  "description": "Terminal UI for finding and revoking Ethereum token approvals",
+  "description": "A beautiful terminal UI for scanning blockchain token approvals and tracking your exposure",
   "main": "index.js",
   "bin": {
-    "revoke-approvals": "./index.js"
+    "snubb": "./index.js"
   },
   "scripts": {
     "start": "node index.js",
@@ -16,9 +16,21 @@
     "approvals",
     "revoke",
     "security",
-    "blockchain"
+    "blockchain",
+    "terminal-ui",
+    "defi",
+    "token-scanner",
+    "multichain"
   ],
-  "author": "",
+  "author": "moose-code",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noose-code/snubb.git"
+  },
+  "homepage": "https://github.com/noose-code/snubb#readme",
+  "bugs": {
+    "url": "https://github.com/noose-code/snubb/issues"
+  },
   "type": "module",
   "license": "ISC",
   "dependencies": {
@@ -34,5 +46,8 @@
     "log-update": "^6.1.0",
     "ora": "^7.0.1",
     "viem": "^2.24.1"
+  },
+  "engines": {
+    "node": ">=16"
   }
 }

@@ -1,0 +1,10 @@
+.git
+.github
+.gitignore
+.DS_Store
+*.log
+tests/
+examples/
+docs/
+.vscode/
+.idea/

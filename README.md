@@ -1,12 +1,12 @@
-# Revoke Approvals - Ethereum Token Approval Scanner
+# Snubb - Multichain Token Approval Scanner
 
-A beautiful terminal UI for scanning Ethereum token approvals and tracking your exposure.
+A beautiful terminal UI for scanning blockchain token approvals and tracking your exposure.
 
-![Terminal UI Screenshot](https://i.imgur.com/example.png)
+![Terminal UI Screenshot](./preview.png)
 
 ## Features
 
-- 🔍 Scans the entire Ethereum blockchain for token approvals
+- 🔍 Scans multiple blockchains for token approvals
 - 🔄 Tracks transfers that utilize these approvals
 - ⚠️ Highlights unlimited token approvals (∞)
 - 📊 Shows remaining allowances after transfers
@@ -18,28 +18,30 @@ A beautiful terminal UI for scanning Ethereum token approvals and tracking your 
 
 ```bash
 # Install globally
-npm install -g revoke-approvals
+npm install -g snubb
 
 # Or use directly with npx
-npx revoke-approvals --address YOUR_ETH_ADDRESS
+npx snubb --address YOUR_ETH_ADDRESS
 ```
 
 ## Usage
 
 ```bash
 # Scan for approvals for a specific address
-revoke-approvals --address 0x7C25a8C86A04f40F2Db0434ab3A24b051FB3cA58
+snubb --address 0x7C25a8C86A04f40F2Db0434ab3A24b051FB3cA58
 
 # Get help
-revoke-approvals --help
+snubb --help
 ```
 
 ## Navigation
 
-The terminal UI supports full keyboard navigation:
+The terminal UI supports keyboard navigation:
 
-- **Up/Down arrows** or **j/k**: Navigate through the approval list
-- **Enter**: Select an approval to see full details
+- **n/p**: Navigate through the approval list
+- **>/&lt;**: Navigate between pages
+- **Enter**: Toggle detailed view for an approval
+- **h**: Show help screen
 - **q**: Quit the application
 
 When an approval is selected, the full token and spender addresses are shown in the details panel, allowing you to copy the complete addresses for use in blockchain explorers.
@@ -69,10 +71,10 @@ The results show:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/revoke-approvals.git
+git clone https://github.com/your-username/snubb.git
 
 # Install dependencies
-cd revoke-approvals
+cd snubb
 npm install
 
 # Run locally

@@ -366,7 +366,7 @@ const rl = readline.createInterface({
 // CLI setup - note the change to use DEFAULT_CHAIN_IDS
 const program = new Command();
 program
-  .name("revoke-approvals")
+  .name("snubb")
   .description("Terminal UI for finding and revoking Ethereum token approvals")
   .version("1.0.0")
   .option("-a, --address <address>", "Ethereum address to check approvals for")
@@ -401,7 +401,7 @@ if (!TARGET_ADDRESS) {
   console.log(chalk.yellow("Usage:"));
   console.log(
     chalk.green(
-      "  revoke-approvals --address 0x7C25a8C86A04f40F2Db0434ab3A24b051FB3cA58\n"
+      "  snubb --address 0x7C25a8C86A04f40F2Db0434ab3A24b051FB3cA58\n"
     )
   );
   console.log(chalk.yellow("Options:"));
