@@ -8,3 +8,4 @@ examples/
 docs/
 .vscode/
 .idea/
+*.png
