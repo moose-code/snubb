@@ -1303,23 +1303,33 @@ async function main() {
       }
     });
 
-    // Sort approvals with priority: by chain, unlimited first within a token, then largest amounts
+    // Sort approvals with priority: by chain, unlimited first across tokens, then largest amounts
     approvalsList.sort((a, b) => {
       // First by chain ID
       if (a.chainId !== b.chainId) {
         return a.chainId - b.chainId;
       }
 
-      // Then by token address within the same chain
+      // Group by token + unlimited status to bring unlimited tokens to the top
+      const aIsUnlimitedToken =
+        a.isUnlimited || isEffectivelyUnlimited(a.remainingApproval);
+      const bIsUnlimitedToken =
+        b.isUnlimited || isEffectivelyUnlimited(b.remainingApproval);
+
+      // Sort unlimited tokens first within the same chain
+      if (aIsUnlimitedToken && !bIsUnlimitedToken) return -1;
+      if (!aIsUnlimitedToken && bIsUnlimitedToken) return 1;
+
+      // For tokens with the same unlimited status, sort by token address
       if (a.tokenAddress !== b.tokenAddress) {
         return a.tokenAddress.localeCompare(b.tokenAddress);
       }
 
-      // Then by unlimited status (unlimited first)
+      // Then by unlimited status (unlimited approvals first) for the same token
       if (a.isUnlimited && !b.isUnlimited) return -1;
       if (!a.isUnlimited && b.isUnlimited) return 1;
 
-      // Then by remaining approval amount (highest first)
+      // Then by remaining approval amount (highest first) for same token, non-unlimited approvals
       if (!a.isUnlimited && !b.isUnlimited) {
         if (b.remainingApproval > a.remainingApproval) return 1;
         if (b.remainingApproval < a.remainingApproval) return -1;
