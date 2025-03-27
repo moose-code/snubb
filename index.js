@@ -66,7 +66,7 @@ const ERC20_ABI = [
   },
 ];
 
-// Fetch token metadata from a list of RPCs with retry logic
+// Fetch token metadata from a list of RPCs with improved retry logic
 async function fetchTokenMetadata(tokenAddress, chainId = 1) {
   // Check cache first
   const cacheKey = `${chainId}:${tokenAddress}`;
@@ -88,7 +88,26 @@ async function fetchTokenMetadata(tokenAddress, chainId = 1) {
 
   // Add fallback RPCs based on known networks
   if (chainId === 1 && rpcUrls.length === 0) {
-    rpcUrls = ["https://rpc.ankr.com/eth", "https://eth.llamarpc.com"];
+    rpcUrls = [
+      "https://rpc.ankr.com/eth",
+      "https://eth.llamarpc.com",
+      "https://ethereum.publicnode.com",
+      "https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161", // Public Infura key
+    ];
+  } else if (chainId === 137 && rpcUrls.length === 0) {
+    // Polygon fallbacks
+    rpcUrls = [
+      "https://polygon-rpc.com",
+      "https://polygon.llamarpc.com",
+      "https://polygon-mainnet.public.blastapi.io",
+    ];
+  } else if (chainId === 56 && rpcUrls.length === 0) {
+    // BSC fallbacks
+    rpcUrls = [
+      "https://bsc-dataseed.binance.org",
+      "https://bsc-dataseed1.defibit.io",
+      "https://bsc-dataseed1.ninicoin.io",
+    ];
   }
 
   // If no RPCs available, return default values
@@ -96,18 +115,39 @@ async function fetchTokenMetadata(tokenAddress, chainId = 1) {
     return { success: false, name: null, symbol: null, decimals: 18 };
   }
 
-  // Try each RPC until one works
+  // Shuffle RPC URLs to avoid always hitting the same one first
+  rpcUrls = shuffleArray([...rpcUrls]);
+
+  let lastError = null;
+  let retryCount = 0;
+
+  // Try each RPC until one works, with exponential backoff between retries
   for (const rpcUrl of rpcUrls) {
     try {
       if (rpcUrl.startsWith("wss://")) continue; // Skip WebSocket RPCs for now
 
-      // Create a viem client
+      // Add a small delay between retries with exponential backoff
+      if (retryCount > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(200 * Math.pow(1.5, retryCount), 2000))
+        );
+      }
+      retryCount++;
+
+      // Create a viem client with timeout
       const client = createPublicClient({
         chain: mainnet, // This is just for typing, we'll override with custom endpoint
-        transport: http(rpcUrl),
+        transport: http(rpcUrl, {
+          timeout: 3000, // 3 second timeout for RPC calls
+          fetchOptions: {
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        }),
       });
 
-      // Fetch token metadata (name, symbol, decimals)
+      // Fetch token metadata (name, symbol, decimals) in parallel
       const [name, symbol, decimals] = await Promise.all([
         client
           .readContract({
@@ -115,42 +155,71 @@ async function fetchTokenMetadata(tokenAddress, chainId = 1) {
             abi: ERC20_ABI,
             functionName: "name",
           })
-          .catch(() => "Unknown Token"),
+          .catch((e) => null),
         client
           .readContract({
             address: tokenAddress,
             abi: ERC20_ABI,
             functionName: "symbol",
           })
-          .catch(() => "???"),
+          .catch((e) => null),
         client
           .readContract({
             address: tokenAddress,
             abi: ERC20_ABI,
             functionName: "decimals",
           })
-          .catch(() => 18),
+          .catch((e) => 18),
       ]);
 
-      const metadata = {
-        success: true,
-        name,
-        symbol,
-        decimals,
-        formattedName: `${name} (${symbol})`,
-      };
+      // If we got at least one piece of metadata
+      if (name !== null || symbol !== null) {
+        const finalName = name || "Unknown Token";
+        const finalSymbol = symbol || "???";
 
-      // Cache the result
-      tokenMetadataCache.set(cacheKey, metadata);
-      return metadata;
+        const metadata = {
+          success: true,
+          name: finalName,
+          symbol: finalSymbol,
+          decimals,
+          formattedName: `${finalName} (${finalSymbol})`,
+        };
+
+        // Cache the result
+        tokenMetadataCache.set(cacheKey, metadata);
+        return metadata;
+      }
+
+      // If both name and symbol are null, consider this attempt failed
+      lastError = new Error("Token metadata not available");
     } catch (error) {
+      lastError = error;
       // Continue to the next RPC if this one fails
-      continue;
     }
   }
 
-  // If all RPCs failed, return default values
-  return { success: false, name: null, symbol: null, decimals: 18 };
+  // If we have a default (placeholder) metadata in cache from a previous failed attempt,
+  // use that instead of creating a new default object every time
+  const defaultMetadata = {
+    success: false,
+    name: "Unknown Token",
+    symbol: "???",
+    decimals: 18,
+    formattedName: "Unknown Token (???)",
+  };
+
+  // Cache the default result to avoid repeated failed requests
+  tokenMetadataCache.set(cacheKey, defaultMetadata);
+  return defaultMetadata;
+}
+
+// Utility to shuffle array (for randomizing RPC order)
+function shuffleArray(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
 }
 
 // Format token amounts with proper decimals
