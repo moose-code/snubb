@@ -13,10 +13,24 @@ import figlet from "figlet";
 import { Command } from "commander";
 import ora from "ora";
 import readline from "readline";
+import boxen from "boxen";
 
 // Global variables for interactive mode
 let approvalsList = [];
 let selectedApprovalIndex = 0;
+let currentPage = 0;
+const PAGE_SIZE = 8; // Number of approvals to show per page
+
+// Scanning stats to preserve after completion
+let scanStats = {
+  totalEvents: 0,
+  totalApprovals: 0,
+  startTime: 0,
+  endTime: 0,
+  height: 0,
+  progressBar: "",
+  eventsPerSecond: 0,
+};
 
 // Create global readline interface
 const rl = readline.createInterface({
@@ -194,17 +208,81 @@ const createQuery = (fromBlock) => ({
 function displayApprovalsList() {
   console.clear();
 
-  console.log(chalk.bold.cyan("OUTSTANDING APPROVALS"));
-  console.log(chalk.yellow(`Address: ${chalk.green(TARGET_ADDRESS)}\n`));
+  // Display header with logo and stats
+  console.log(
+    chalk.bold.cyan(figlet.textSync("REVOKE", { font: "ANSI Shadow" }))
+  );
+  console.log(chalk.bold.cyan("Ethereum Token Approval Scanner\n"));
 
+  // Display scan statistics in a box
+  const statsContent = [
+    `${chalk.yellow("Address:")} ${chalk.green(TARGET_ADDRESS)}`,
+    `${chalk.yellow("Chain Height:")} ${chalk.white(
+      formatNumber(scanStats.height)
+    )}`,
+    `${chalk.yellow("Events Processed:")} ${chalk.white(
+      formatNumber(scanStats.totalEvents)
+    )}`,
+    `${chalk.yellow("Scan Time:")} ${chalk.white(
+      (scanStats.endTime / 1000).toFixed(1)
+    )} seconds`,
+    `${chalk.yellow("Speed:")} ${chalk.white(
+      formatNumber(scanStats.eventsPerSecond)
+    )}/s`,
+    `${chalk.yellow("Approvals Found:")} ${chalk.white(approvalsList.length)}`,
+  ].join("\n");
+
+  console.log(
+    boxen(statsContent, {
+      padding: 1,
+      margin: { top: 0, bottom: 1 },
+      borderStyle: "round",
+      borderColor: "cyan",
+    })
+  );
+
+  // Show progress bar (completed)
+  console.log(scanStats.progressBar + " " + chalk.green("✓ Complete\n"));
+
+  // Navigation header
+  const totalPages = Math.ceil(approvalsList.length / PAGE_SIZE);
+  console.log(
+    boxen(
+      chalk.bold.cyan(
+        `OUTSTANDING APPROVALS (${currentPage + 1}/${totalPages})`
+      ),
+      {
+        padding: { top: 0, bottom: 0, left: 1, right: 1 },
+        borderColor: "yellow",
+        borderStyle: "round",
+      }
+    )
+  );
+
+  // Display pagination info
   console.log(chalk.cyan("Navigation:"));
-  console.log(chalk.cyan("  n - Next approval"));
-  console.log(chalk.cyan("  p - Previous approval"));
+  console.log(chalk.cyan("  n - Next approval    p - Previous approval"));
+  console.log(chalk.cyan("  > - Next page        < - Previous page"));
   console.log(chalk.cyan("  q - Quit\n"));
 
-  // Display the approvals in a numbered list
-  approvalsList.forEach((approval, index) => {
-    const isSelected = index === selectedApprovalIndex;
+  // Calculate page bounds
+  const startIdx = currentPage * PAGE_SIZE;
+  const endIdx = Math.min(startIdx + PAGE_SIZE, approvalsList.length);
+
+  // Create a table-like structure for approvals
+  console.log(
+    chalk.bold(
+      `  ${chalk.cyan("TOKEN")}${" ".repeat(16)}${chalk.yellow(
+        "SPENDER"
+      )}${" ".repeat(14)}${chalk.magenta("AMOUNT")}`
+    )
+  );
+  console.log("  " + "─".repeat(50));
+
+  // Display the approvals in a numbered list for current page
+  for (let i = startIdx; i < endIdx; i++) {
+    const approval = approvalsList[i];
+    const isSelected = i === selectedApprovalIndex;
     const prefix = isSelected ? chalk.cyan("→ ") : "  ";
     const tokenPart = isSelected
       ? chalk.cyan.bold(formatToken(approval.tokenAddress))
@@ -215,72 +293,104 @@ function displayApprovalsList() {
       : chalk.yellow(formatToken(approval.spender));
 
     const amountPart = approval.isUnlimited
-      ? chalk.red(isSelected ? "UNLIMITED" : "∞")
+      ? chalk.red.bold(isSelected ? "UNLIMITED" : "∞")
       : chalk.green(formatAmount(approval.remainingApproval));
 
-    console.log(`${prefix}${tokenPart} → ${spenderPart} | ${amountPart}`);
-  });
+    // Pad spaces to align columns
+    const tokenSpacer = " ".repeat(
+      Math.max(2, 20 - formatToken(approval.tokenAddress).length)
+    );
+    const spenderSpacer = " ".repeat(
+      Math.max(2, 20 - formatToken(approval.spender).length)
+    );
+
+    console.log(
+      `${prefix}${tokenPart}${tokenSpacer}${spenderPart}${spenderSpacer}${amountPart}`
+    );
+  }
+
+  console.log("\n" + chalk.dim("  ℹ️  Select an approval to see details"));
 
   // Display details of the selected approval
   if (approvalsList.length > 0) {
     const approval = approvalsList[selectedApprovalIndex];
 
-    console.log("\n" + chalk.bold.cyan("APPROVAL DETAILS"));
-    console.log("─".repeat(60));
-
-    console.log(chalk.cyan("Full Token Address:"));
-    console.log(chalk.green(approval.tokenAddress));
-
-    console.log(chalk.cyan("\nFull Spender Address:"));
-    console.log(chalk.green(approval.spender));
-
-    console.log(chalk.cyan("\nApproval Details:"));
     console.log(
-      `${chalk.yellow("Approved Amount:")} ${chalk.green(
+      "\n" +
+        boxen(chalk.bold.cyan("APPROVAL DETAILS"), {
+          padding: { top: 0, bottom: 0, left: 1, right: 1 },
+          borderColor: "green",
+          borderStyle: "round",
+        })
+    );
+
+    // Create two columns for details
+    const leftColumn = [
+      `${chalk.cyan("Full Token Address:")}`,
+      `${chalk.green(approval.tokenAddress)}`,
+      ``,
+      `${chalk.cyan("Full Spender Address:")}`,
+      `${chalk.green(approval.spender)}`,
+    ].join("\n");
+
+    const rightColumn = [
+      `${chalk.cyan("Approval Details:")}`,
+      `${chalk.yellow("Approved:")} ${chalk.green(
         approval.isUnlimited
           ? "∞ (Unlimited)"
           : formatAmount(approval.approvedAmount)
-      )}`
-    );
-    console.log(
-      `${chalk.yellow("Used Amount:")} ${chalk.green(
+      )}`,
+      `${chalk.yellow("Used:")} ${chalk.green(
         formatAmount(approval.transferredAmount)
-      )}`
-    );
-    console.log(
+      )}`,
       `${chalk.yellow("Remaining:")} ${chalk.green(
         approval.isUnlimited
           ? "∞ (Unlimited)"
           : formatAmount(approval.remainingApproval)
-      )}`
-    );
+      )}`,
+      `${chalk.yellow("Block:")} ${approval.blockNumber}  ${chalk.yellow(
+        "Tx:"
+      )} ${formatToken(approval.txHash)}`,
+    ].join("\n");
 
+    // Display warning for unlimited approvals
     if (approval.isUnlimited) {
       console.log(
-        "\n" +
-          chalk.red(
-            "⚠️  UNLIMITED APPROVAL - This represents unlimited access to this token"
-          )
+        boxen(
+          chalk.bold.white(
+            "⚠️  UNLIMITED APPROVAL - This contract has unlimited access to this token in your wallet"
+          ),
+          { padding: 1, borderColor: "red", borderStyle: "round" }
+        )
       );
     }
 
-    console.log(chalk.cyan("\nTransaction:"));
-    console.log(`${chalk.yellow("Block:")} ${approval.blockNumber}`);
-    console.log(`${chalk.yellow("Tx Hash:")} ${approval.txHash}`);
+    // Display two columns side by side
+    const columnWidth = 60;
+    const lines1 = leftColumn.split("\n");
+    const lines2 = rightColumn.split("\n");
+    const maxLines = Math.max(lines1.length, lines2.length);
 
-    console.log("─".repeat(60));
+    for (let i = 0; i < maxLines; i++) {
+      const line1 =
+        i < lines1.length
+          ? lines1[i].padEnd(columnWidth)
+          : " ".repeat(columnWidth);
+      const line2 = i < lines2.length ? lines2[i] : "";
+      console.log(`  ${line1}${line2}`);
+    }
   }
 }
 
-// Interactive mode with simpler prompting
+// Interactive mode with improved prompting
 function startInteractivePrompt() {
-  // Use a debugging message to verify that interactive mode is being reached
-  console.log(chalk.bgMagenta.white("\n[DEBUG] Interactive mode activated"));
-
-  console.log(chalk.bold.green("\nEnter a command:"));
-  console.log("  n - Next approval");
-  console.log("  p - Previous approval");
-  console.log("  q - Quit");
+  console.log(
+    boxen(chalk.bold.white("Interactive Mode - Enter commands below"), {
+      padding: { top: 0, bottom: 0, left: 1, right: 1 },
+      borderColor: "magenta",
+      borderStyle: "round",
+    })
+  );
 
   // Make sure we print the prompt to stdout
   process.stdout.write("\n> ");
@@ -293,33 +403,54 @@ function startInteractivePrompt() {
     const command = data.toString().trim().toLowerCase();
 
     if (command === "q") {
-      console.log("Exiting...");
+      console.log(chalk.green("Exiting..."));
       rl.close();
       process.exit(0);
     } else if (command === "n") {
       if (selectedApprovalIndex < approvalsList.length - 1) {
         selectedApprovalIndex++;
+        // Update current page if selection moves to next page
+        if (selectedApprovalIndex >= (currentPage + 1) * PAGE_SIZE) {
+          currentPage = Math.floor(selectedApprovalIndex / PAGE_SIZE);
+        }
       }
       displayApprovalsList();
-      console.log(chalk.bold.green("\nEnter a command:"));
-      console.log("  n - Next approval");
-      console.log("  p - Previous approval");
-      console.log("  q - Quit");
-      process.stdout.write("\n> ");
+      process.stdout.write("> ");
     } else if (command === "p") {
       if (selectedApprovalIndex > 0) {
         selectedApprovalIndex--;
+        // Update current page if selection moves to previous page
+        if (selectedApprovalIndex < currentPage * PAGE_SIZE) {
+          currentPage = Math.floor(selectedApprovalIndex / PAGE_SIZE);
+        }
       }
       displayApprovalsList();
-      console.log(chalk.bold.green("\nEnter a command:"));
-      console.log("  n - Next approval");
-      console.log("  p - Previous approval");
-      console.log("  q - Quit");
-      process.stdout.write("\n> ");
+      process.stdout.write("> ");
+    } else if (command === ">") {
+      // Next page
+      if ((currentPage + 1) * PAGE_SIZE < approvalsList.length) {
+        currentPage++;
+        // Update selected index to first item on new page
+        selectedApprovalIndex = currentPage * PAGE_SIZE;
+      }
+      displayApprovalsList();
+      process.stdout.write("> ");
+    } else if (command === "<") {
+      // Previous page
+      if (currentPage > 0) {
+        currentPage--;
+        // Update selected index to first item on new page
+        selectedApprovalIndex = currentPage * PAGE_SIZE;
+      }
+      displayApprovalsList();
+      process.stdout.write("> ");
     } else if (command) {
       // Invalid command
       console.log(chalk.red(`Invalid command: '${command}'. Try again.`));
-      process.stdout.write("\n> ");
+      process.stdout.write("> ");
+    } else {
+      // Empty command, just redisplay prompt
+      process.stdout.write("> ");
     }
   });
 
@@ -349,6 +480,7 @@ async function main() {
   try {
     // Get chain height for progress tracking
     const height = await client.getHeight();
+    scanStats.height = height; // Store for later use
     spinner.succeed(
       `Connected to Ethereum. Chain height: ${formatNumber(height)}`
     );
@@ -368,6 +500,7 @@ async function main() {
     let totalEvents = 0;
     let totalApprovals = 0;
     let startTime = performance.now();
+    scanStats.startTime = startTime; // Store for later display
     let query = createQuery(0);
 
     // Initial progress display
@@ -399,6 +532,7 @@ async function main() {
       // Process events
       if (res.data && res.data.logs) {
         totalEvents += res.data.logs.length;
+        scanStats.totalEvents = totalEvents; // Update global stats
 
         // Decode logs
         const decodedLogs = await decoder.decodeLogs(res.data.logs);
@@ -512,11 +646,15 @@ async function main() {
         const progress = Math.min(1, res.nextBlock / height);
         const seconds = (performance.now() - startTime) / 1000;
         const eventsPerSecond = Math.round(totalEvents / seconds);
+        scanStats.eventsPerSecond = eventsPerSecond; // Update global stats
+
+        // Save current progress bar to global state
+        scanStats.progressBar = drawProgressBar(progress);
 
         // Clear line and update progress
         process.stdout.write("\r" + " ".repeat(100) + "\r");
         process.stdout.write(
-          `${drawProgressBar(progress)} Block: ${formatNumber(
+          `${scanStats.progressBar} Block: ${formatNumber(
             res.nextBlock
           )}/${formatNumber(height)} | ` +
             `Events: ${formatNumber(totalEvents)} | ` +
@@ -528,13 +666,13 @@ async function main() {
     }
 
     // Processing complete
-    const totalTime = (performance.now() - startTime) / 1000;
+    scanStats.endTime = performance.now() - startTime;
 
     console.log(
       chalk.green(
         `\n✨ Scan complete: ${formatNumber(
           totalEvents
-        )} events in ${totalTime.toFixed(1)} seconds\n`
+        )} events in ${scanStats.endTime.toFixed(1)} seconds\n`
       )
     );
 

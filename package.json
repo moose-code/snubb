@@ -25,6 +25,7 @@
     "@envio-dev/hypersync-client": "^0.6.3",
     "blessed": "^0.1.81",
     "blessed-contrib": "^4.11.0",
+    "boxen": "^8.0.1",
     "chalk": "^5.4.1",
     "cli-spinners": "^2.9.2",
     "commander": "^11.1.0",
