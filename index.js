@@ -373,8 +373,8 @@ program
   .option("-a, --address <address>", "Ethereum address to check approvals for")
   .option(
     "-c, --chains <chainIds>",
-    "Comma-separated chain IDs to scan",
-    DEFAULT_CHAIN_IDS
+    "Comma-separated chain IDs or 'many-networks' to scan multiple networks (default: 1 - Ethereum only)",
+    "1"
   )
   .parse(process.argv);
 
@@ -385,13 +385,19 @@ let TARGET_ADDRESS = options.address;
 if (!TARGET_ADDRESS) {
   console.log(
     chalk.bold.cyan(
-      figlet.textSync("Revoke", {
+      figlet.textSync("snubb", {
         font: "ANSI Shadow",
         horizontalLayout: "full",
       })
     )
   );
-  console.log(chalk.bold.cyan("A beautiful multichain approval scanner\n"));
+  console.log(
+    chalk.bold.cyan("multichain token approval scanner") +
+      " - " +
+      chalk.cyan("powered by ") +
+      chalk.cyan.underline("envio.dev") +
+      "\n"
+  );
 
   console.log(chalk.yellow("Usage:"));
   console.log(
@@ -402,7 +408,14 @@ if (!TARGET_ADDRESS) {
   console.log(chalk.yellow("Options:"));
   console.log(
     chalk.green(
-      `  --chains <chainIds>  Comma-separated chain IDs to scan (default: ${DEFAULT_CHAIN_IDS})\n`
+      `  --chains <chainIds>  Comma-separated chain IDs to scan (default: 1 - Ethereum only)\n`
+    )
+  );
+  console.log(
+    chalk.green(
+      `  --chains many-networks  Scan multiple supported networks (${PREFERRED_CHAINS.join(
+        ", "
+      )})\n`
     )
   );
 
@@ -410,19 +423,28 @@ if (!TARGET_ADDRESS) {
 }
 
 // Get chain IDs from options
-const CHAIN_IDS = options.chains
-  .split(",")
-  .map((id) => parseInt(id.trim()))
-  .filter((id) => SUPPORTED_CHAINS[id]);
+let CHAIN_IDS = [];
 
-// If no valid chains, use the first available chain
-if (CHAIN_IDS.length === 0) {
-  const firstChainId = Object.keys(SUPPORTED_CHAINS)[0];
-  if (firstChainId) {
-    CHAIN_IDS.push(parseInt(firstChainId));
-  } else {
-    CHAIN_IDS.push(1); // Fallback to Ethereum mainnet
+// Check if 'many-networks' keyword is used
+if (options.chains.toLowerCase() === "many-networks") {
+  // Use all preferred networks
+  for (const chainName of PREFERRED_CHAINS) {
+    const chain = chainNameToData[chainName];
+    if (chain) {
+      CHAIN_IDS.push(chain.chain_id);
+    }
   }
+} else {
+  // Otherwise use the specified chains
+  CHAIN_IDS = options.chains
+    .split(",")
+    .map((id) => parseInt(id.trim()))
+    .filter((id) => SUPPORTED_CHAINS[id]);
+}
+
+// If no valid chains, use Ethereum mainnet
+if (CHAIN_IDS.length === 0) {
+  CHAIN_IDS.push(1); // Fallback to Ethereum mainnet
 }
 
 // Normalize address
