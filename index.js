@@ -32,6 +32,54 @@ try {
   );
 }
 
+// Chain information with safe chalk colors
+const SUPPORTED_CHAINS = {
+  1: {
+    name: "Ethereum",
+    color: "cyan",
+    hypersyncUrl: "http://1.hypersync.xyz",
+  },
+  10: {
+    name: "Optimism",
+    color: "redBright",
+    hypersyncUrl: "http://10.hypersync.xyz",
+  },
+  137: {
+    name: "Polygon",
+    color: "magenta",
+    hypersyncUrl: "http://137.hypersync.xyz",
+  },
+  56: { name: "BSC", color: "yellow", hypersyncUrl: "http://56.hypersync.xyz" },
+  42161: {
+    name: "Arbitrum",
+    color: "blue",
+    hypersyncUrl: "http://42161.hypersync.xyz",
+  },
+  43114: {
+    name: "Avalanche",
+    color: "red",
+    hypersyncUrl: "http://43114.hypersync.xyz",
+  },
+};
+
+// List of safe chalk colors for dynamically assigned chains
+const SAFE_COLORS = [
+  "green",
+  "yellow",
+  "blue",
+  "magenta",
+  "cyan",
+  "white",
+  "gray",
+  "redBright",
+  "greenBright",
+  "yellowBright",
+  "blueBright",
+  "magentaBright",
+  "cyanBright",
+  "whiteBright",
+];
+
 // Cache for token metadata
 const tokenMetadataCache = new Map();
 
@@ -225,15 +273,7 @@ const PAGE_SIZE = 8; // Number of approvals to show per page
 let groupedApprovals = {};
 
 // Scanning stats to preserve after completion
-let scanStats = {
-  totalEvents: 0,
-  totalApprovals: 0,
-  startTime: 0,
-  endTime: 0,
-  height: 0,
-  progressBar: "",
-  eventsPerSecond: 0,
-};
+let chainStats = {};
 
 // Create global readline interface
 const rl = readline.createInterface({
@@ -249,7 +289,11 @@ program
   .description("Terminal UI for finding and revoking Ethereum token approvals")
   .version("1.0.0")
   .option("-a, --address <address>", "Ethereum address to check approvals for")
-  .option("-c, --chain <chainId>", "Chain ID to scan (default: 1)", "1")
+  .option(
+    "-c, --chains <chainIds>",
+    "Comma-separated chain IDs to scan (default: 1,10,137)",
+    "1,10,137"
+  )
   .parse(process.argv);
 
 const options = program.opts();
@@ -265,7 +309,7 @@ if (!TARGET_ADDRESS) {
       })
     )
   );
-  console.log(chalk.bold.cyan("A beautiful Ethereum approval scanner\n"));
+  console.log(chalk.bold.cyan("A beautiful multichain approval scanner\n"));
 
   console.log(chalk.yellow("Usage:"));
   console.log(
@@ -276,15 +320,23 @@ if (!TARGET_ADDRESS) {
   console.log(chalk.yellow("Options:"));
   console.log(
     chalk.green(
-      "  --chain <chainId>  Chain ID to scan (default: 1 for Ethereum mainnet)\n"
+      "  --chains <chainIds>  Comma-separated chain IDs to scan (default: 1,10,137)\n"
     )
   );
 
   process.exit(0);
 }
 
-// Get chain ID from options
-const CHAIN_ID = parseInt(options.chain);
+// Get chain IDs from options
+const CHAIN_IDS = options.chains
+  .split(",")
+  .map((id) => parseInt(id.trim()))
+  .filter((id) => SUPPORTED_CHAINS[id]);
+
+// If no valid chains, use Ethereum mainnet
+if (CHAIN_IDS.length === 0) {
+  CHAIN_IDS.push(1);
+}
 
 // Normalize address
 TARGET_ADDRESS = TARGET_ADDRESS.toLowerCase();
@@ -374,21 +426,51 @@ const formatAmount = (amount, tokenMetadata) => {
   return amount.toString();
 };
 
-// Draw progress bar
-function drawProgressBar(progress, width = 40) {
+// Format chain name with color (safely)
+const formatChainName = (chainId) => {
+  if (!SUPPORTED_CHAINS[chainId]) {
+    return chalk.white(`Chain ${chainId}`);
+  }
+
+  const chain = SUPPORTED_CHAINS[chainId];
+  const colorName = chain.color || "white";
+
+  // Safely apply color
+  try {
+    if (chalk[colorName]) {
+      return chalk[colorName](chain.name);
+    } else {
+      return chalk.white(chain.name);
+    }
+  } catch (error) {
+    return chalk.white(chain.name);
+  }
+};
+
+// Draw progress bar with safe color handling
+function drawProgressBar(progress, width = 40, colorName = "cyan") {
   const filledWidth = Math.floor(width * progress);
   const emptyWidth = width - filledWidth;
   const filledBar = "█".repeat(filledWidth);
   const emptyBar = "░".repeat(emptyWidth);
-  return `[${chalk.cyan(filledBar)}${emptyBar}] ${(progress * 100).toFixed(
-    2
-  )}%`;
-}
 
-// Initialize Hypersync client
-const client = HypersyncClient.new({
-  url: "http://eth.hypersync.xyz",
-});
+  // Safely apply color
+  try {
+    if (chalk[colorName]) {
+      return `[${chalk[colorName](filledBar)}${emptyBar}] ${(
+        progress * 100
+      ).toFixed(2)}%`;
+    } else {
+      return `[${chalk.cyan(filledBar)}${emptyBar}] ${(progress * 100).toFixed(
+        2
+      )}%`;
+    }
+  } catch (error) {
+    return `[${chalk.cyan(filledBar)}${emptyBar}] ${(progress * 100).toFixed(
+      2
+    )}%`;
+  }
+}
 
 // Create a query for ERC20 events related to our target address
 const createQuery = (fromBlock) => ({
@@ -444,40 +526,67 @@ async function displayApprovalsList() {
 
   // Display header with logo and stats
   console.log(
-    chalk.bold.cyan(figlet.textSync("REVOKE", { font: "ANSI Shadow" }))
+    chalk.bold.cyan(figlet.textSync("snubb", { font: "ANSI Shadow" }))
   );
-  console.log(chalk.bold.cyan("Ethereum Token Approval Scanner\n"));
+  console.log(chalk.bold.cyan("multichain token approval scanner\n"));
 
-  // Display scan statistics in a box
-  const statsContent = [
-    `${chalk.yellow("Address:")} ${chalk.green(TARGET_ADDRESS)}`,
-    `${chalk.yellow("Chain ID:")} ${chalk.white(CHAIN_ID)}`,
-    `${chalk.yellow("Chain Height:")} ${chalk.white(
-      formatNumber(scanStats.height)
-    )}`,
-    `${chalk.yellow("Events Processed:")} ${chalk.white(
-      formatNumber(scanStats.totalEvents)
-    )}`,
-    `${chalk.yellow("Scan Time:")} ${chalk.white(
-      (scanStats.endTime / 1000).toFixed(1)
-    )} seconds`,
-    `${chalk.yellow("Speed:")} ${chalk.white(
-      formatNumber(scanStats.eventsPerSecond)
-    )}/s`,
-    `${chalk.yellow("Approvals Found:")} ${chalk.white(approvalsList.length)}`,
-  ].join("\n");
+  // Display scan statistics in a more compact layout
+  console.log(chalk.bold.yellow("SCAN STATISTICS"));
 
+  // Create a compact progress bar display for all chains
+  console.log(chalk.bold("\nProgress:"));
+  for (const chainId of CHAIN_IDS) {
+    if (chainStats[chainId]) {
+      const stats = chainStats[chainId];
+      const chainName = SUPPORTED_CHAINS[chainId]?.name || `Chain ${chainId}`;
+      console.log(
+        `  ${formatChainName(chainId)}: ${stats.progressBar} ${chalk.green(
+          "✓ Complete"
+        )}`
+      );
+    }
+  }
+
+  // Display key stats in a more compact format
+  console.log(chalk.bold("\nSummary:"));
+
+  // Create a compact table header
   console.log(
-    boxen(statsContent, {
-      padding: 1,
-      margin: { top: 0, bottom: 1 },
-      borderStyle: "round",
-      borderColor: "cyan",
-    })
+    `  ${chalk.cyan("CHAIN".padEnd(12))} ${chalk.cyan(
+      "HEIGHT".padEnd(12)
+    )} ${chalk.cyan("EVENTS".padEnd(12))} ${chalk.cyan(
+      "TIME".padEnd(8)
+    )} ${chalk.cyan("APPROVALS")}`
   );
+  console.log(`  ${"─".repeat(55)}`);
 
-  // Show progress bar (completed)
-  console.log(scanStats.progressBar + " " + chalk.green("✓ Complete\n"));
+  // Show chain stats in table format
+  let totalApprovals = 0;
+  for (const chainId of CHAIN_IDS) {
+    if (chainStats[chainId]) {
+      const stats = chainStats[chainId];
+      const chainName = SUPPORTED_CHAINS[chainId]?.name || `Chain ${chainId}`;
+
+      // Format values with padding for alignment
+      const chainDisplay = formatChainName(chainId).padEnd(12);
+      const heightDisplay = formatNumber(stats.height).padEnd(12);
+      const eventsDisplay = formatNumber(stats.totalEvents).padEnd(12);
+      const timeDisplay = `${(stats.endTime / 1000).toFixed(1)}s`.padEnd(8);
+
+      console.log(
+        `  ${chainDisplay} ${chalk.white(heightDisplay)} ${chalk.white(
+          eventsDisplay
+        )} ${chalk.white(timeDisplay)} ${chalk.white(stats.approvalsCount)}`
+      );
+
+      totalApprovals += stats.approvalsCount;
+    }
+  }
+
+  console.log(`  ${"─".repeat(55)}`);
+  console.log(`  ${"TOTAL".padEnd(36)} ${chalk.bold.white(totalApprovals)}`);
+
+  console.log(""); // Add spacing
 
   // Calculate page bounds
   const startIdx = currentPage * PAGE_SIZE;
@@ -503,14 +612,15 @@ async function displayApprovalsList() {
   // Create a table-like structure for approvals with grouped tokens
   console.log(
     chalk.bold(
-      `  ${chalk.cyan("TOKEN/SPENDER")}${" ".repeat(44)}${chalk.magenta(
-        "AMOUNT"
-      )}`
+      `  ${chalk.cyan("CHAIN")}  ${chalk.cyan("TOKEN/SPENDER")}${" ".repeat(
+        38
+      )}${chalk.magenta("AMOUNT")}`
     )
   );
   console.log("  " + "─".repeat(70));
 
-  // Group approvals by token for the current page
+  // Group approvals by chain and token for the current page
+  let currentChainId = null;
   let currentTokenAddress = null;
 
   // Display the approvals with token metadata when available
@@ -518,12 +628,21 @@ async function displayApprovalsList() {
     const approval = approvalsList[i];
     const isSelected = i === selectedApprovalIndex;
 
-    // Check if this is a new token
-    const isNewToken = currentTokenAddress !== approval.tokenAddress;
+    // Check if this is a new chain or token
+    const isNewChain = currentChainId !== approval.chainId;
+    const isNewToken =
+      currentTokenAddress !== approval.tokenAddress || isNewChain;
+
+    if (isNewChain) {
+      console.log(`  ${formatChainName(approval.chainId)}`);
+      currentChainId = approval.chainId;
+      currentTokenAddress = null; // Reset token tracking when chain changes
+    }
+
     if (isNewToken) {
       // Try to get token metadata from cache first
       const tokenMetadata = tokenMetadataCache.get(
-        `${CHAIN_ID}:${approval.tokenAddress}`
+        `${approval.chainId}:${approval.tokenAddress}`
       );
 
       // Print token with name if available, otherwise use address
@@ -534,7 +653,8 @@ async function displayApprovalsList() {
             )})`
           : chalk.cyan.bold(approval.tokenAddress);
 
-      console.log(`  ${tokenDisplay}`);
+      // Indent tokens under their chain
+      console.log(`    ${tokenDisplay}`);
       currentTokenAddress = approval.tokenAddress;
     }
 
@@ -545,14 +665,14 @@ async function displayApprovalsList() {
     const displayAsUnlimited = approval.isUnlimited || isEffectiveUnlimited;
 
     // Indent spenders under their token
-    const prefix = isSelected ? chalk.cyan("→ ") : "    ";
+    const prefix = isSelected ? chalk.cyan("→ ") : "      ";
     const spenderPart = isSelected
       ? chalk.yellow.bold(formatToken(approval.spender))
       : chalk.yellow(formatToken(approval.spender));
 
     // Get token metadata from cache if available for amount formatting
     const tokenMetadata = tokenMetadataCache.get(
-      `${CHAIN_ID}:${approval.tokenAddress}`
+      `${approval.chainId}:${approval.tokenAddress}`
     );
 
     const amountPart = displayAsUnlimited
@@ -561,7 +681,7 @@ async function displayApprovalsList() {
 
     // Pad spaces to align columns
     const spenderSpacer = " ".repeat(
-      Math.max(2, 50 - formatToken(approval.spender).length)
+      Math.max(2, 48 - formatToken(approval.spender).length)
     );
 
     // Use different indentation for spenders
@@ -576,7 +696,7 @@ async function displayApprovalsList() {
 
     // Use cached token metadata if available
     const tokenMetadata = tokenMetadataCache.get(
-      `${CHAIN_ID}:${approval.tokenAddress}`
+      `${approval.chainId}:${approval.tokenAddress}`
     );
 
     // Display approval details with available metadata
@@ -618,12 +738,15 @@ async function fetchTokenMetadataInBackground(startIdx, endIdx) {
   // Collect all tokens that need metadata
   for (let i = startIdx; i < endIdx; i++) {
     if (i < approvalsList.length) {
-      const tokenAddress = approvalsList[i].tokenAddress;
-      const cacheKey = `${CHAIN_ID}:${tokenAddress}`;
+      const approval = approvalsList[i];
+      const cacheKey = `${approval.chainId}:${approval.tokenAddress}`;
 
       // Only fetch tokens that aren't already in the cache
       if (!tokenMetadataCache.has(cacheKey)) {
-        tokensToFetch.add(tokenAddress);
+        tokensToFetch.add({
+          chainId: approval.chainId,
+          tokenAddress: approval.tokenAddress,
+        });
       }
     }
   }
@@ -632,9 +755,11 @@ async function fetchTokenMetadataInBackground(startIdx, endIdx) {
   if (tokensToFetch.size === 0) return;
 
   // Fetch token metadata in parallel
-  const promises = Array.from(tokensToFetch).map(async (tokenAddress) => {
-    await fetchTokenMetadata(tokenAddress, CHAIN_ID);
-  });
+  const promises = Array.from(tokensToFetch).map(
+    async ({ chainId, tokenAddress }) => {
+      await fetchTokenMetadata(tokenAddress, chainId);
+    }
+  );
 
   // Wait for all fetches to complete then redraw the screen
   await Promise.all(promises);
@@ -643,6 +768,12 @@ async function fetchTokenMetadataInBackground(startIdx, endIdx) {
 
 // Function to display approval details
 function displayApprovalDetails(approval, tokenMetadata) {
+  // Get chain info
+  const chain = SUPPORTED_CHAINS[approval.chainId] || {
+    name: `Chain ${approval.chainId}`,
+    color: "white",
+  };
+
   console.log(
     "\n" +
       boxen(chalk.bold.cyan("APPROVAL DETAILS"), {
@@ -660,6 +791,10 @@ function displayApprovalDetails(approval, tokenMetadata) {
 
   // Create a more readable single-column display
   const detailsContent = [
+    // Chain information
+    `${chalk.cyan.bold("Chain:")} ${formatChainName(approval.chainId)}`,
+    "",
+
     // Token information
     tokenMetadata && tokenMetadata.success
       ? `${chalk.cyan.bold("Token:")} ${chalk.green(tokenMetadata.name)} (${
@@ -728,7 +863,7 @@ function displayHelpScreen() {
   console.log(
     chalk.bold.cyan(figlet.textSync("HELP", { font: "ANSI Shadow" }))
   );
-  console.log(chalk.bold.cyan("Ethereum Token Approval Scanner\n"));
+  console.log(chalk.bold.cyan("Multichain Token Approval Scanner\n"));
 
   const helpContent = boxen(
     [
@@ -767,14 +902,12 @@ function displayHelpScreen() {
   // Wait for keypress to return
   process.stdin.once("data", () => {
     displayApprovalsList();
-    process.stdout.write("> ");
+    process.stdout.write(chalk.cyan.bold("> "));
   });
 }
 
 // Interactive mode with improved prompting
 function startInteractivePrompt() {
-  // Interactive mode indicator is now moved into the navigation box at the bottom of displayApprovalsList
-
   // Use a visually distinct prompt
   process.stdout.write(chalk.cyan.bold("> "));
 
@@ -849,78 +982,74 @@ function startInteractivePrompt() {
   });
 }
 
-// Main function
-async function main() {
-  // Clear the screen and show welcome message
-  console.clear();
-  console.log(
-    chalk.bold.cyan(figlet.textSync("REVOKE", { font: "ANSI Shadow" }))
-  );
-  console.log(chalk.bold.cyan("Ethereum Token Approval Scanner\n"));
-  console.log(chalk.yellow(`Address: ${chalk.green(TARGET_ADDRESS)}\n`));
+// Function to scan a single chain
+async function scanChain(chainId) {
+  // Initialize per-chain stats
+  chainStats[chainId] = {
+    height: 0,
+    totalEvents: 0,
+    startTime: performance.now(),
+    endTime: 0,
+    progressBar: drawProgressBar(0),
+    eventsPerSecond: 0,
+    approvalsCount: 0,
+  };
 
-  // Initialize spinner
-  let spinner = ora({
-    text: "Connecting to Ethereum...",
-    color: "cyan",
-  }).start();
+  const stats = chainStats[chainId];
+  const chain = SUPPORTED_CHAINS[chainId] || {
+    name: `Chain ${chainId}`,
+    color: "white",
+  };
+  const colorName = chain.color || "white";
 
+  // Initialize Hypersync client for this chain
+  const hypersyncUrl = `http://${chainId}.hypersync.xyz`;
+  const client = HypersyncClient.new({
+    url: hypersyncUrl,
+  });
+
+  // Get chain height for progress tracking
   try {
-    // Get chain height for progress tracking
-    const height = await client.getHeight();
-    scanStats.height = height; // Store for later use
-    spinner.succeed(
-      `Connected to Ethereum. Chain height: ${formatNumber(height)}`
+    stats.height = await client.getHeight();
+  } catch (error) {
+    console.error(
+      chalk.red(`Error connecting to ${hypersyncUrl}: ${error.message}`)
     );
-
-    // Create decoder for events
-    const decoder = Decoder.fromSignatures([
-      "Transfer(address indexed from, address indexed to, uint256 amount)",
-      "Approval(address indexed owner, address indexed spender, uint256 amount)",
-    ]);
-
-    // Track approvals by token and spender
-    const approvals = {};
-    const transfersUsingApprovals = {};
-    const tokenAddresses = new Set();
-    const tokenCounts = {};
-
-    let totalEvents = 0;
-    let totalApprovals = 0;
-    let startTime = performance.now();
-    scanStats.startTime = startTime; // Store for later display
-    let query = createQuery(0);
-
-    // Initial progress display
-    console.log(
-      chalk.cyan(
-        `\nScanning from block ${chalk.white("0")} to ${chalk.white(
-          formatNumber(height)
-        )}`
-      )
+    stats.progressBar = chalk.red(
+      `[ERROR] Could not connect to ${hypersyncUrl}`
     );
-    console.log(drawProgressBar(0) + ` Block: 0/${formatNumber(height)}`);
+    stats.endTime = performance.now() - stats.startTime;
+    return { approvals: {}, transfersUsingApprovals: {} }; // Return empty results
+  }
 
-    // Start streaming events
-    const stream = await client.stream(query, {});
+  // Create decoder for events
+  const decoder = Decoder.fromSignatures([
+    "Transfer(address indexed from, address indexed to, uint256 amount)",
+    "Approval(address indexed owner, address indexed spender, uint256 amount)",
+  ]);
 
-    // For updating status line periodically
-    let lastOutputTime = Date.now();
+  // Track approvals by token and spender
+  const approvals = {};
+  const transfersUsingApprovals = {};
 
-    while (true) {
+  let query = createQuery(0);
+  let lastOutputTime = Date.now();
+
+  // Start streaming events
+  const stream = await client.stream(query, {});
+
+  while (true) {
+    try {
       const res = await stream.recv();
 
       // Exit if we've reached the end of the chain
       if (res === null) {
-        process.stdout.write("\r" + " ".repeat(100) + "\r"); // Clear line
-        console.log(chalk.green("✓ Reached the tip of the blockchain!"));
         break;
       }
 
       // Process events
       if (res.data && res.data.logs) {
-        totalEvents += res.data.logs.length;
-        scanStats.totalEvents = totalEvents; // Update global stats
+        stats.totalEvents += res.data.logs.length;
 
         // Decode logs
         const decodedLogs = await decoder.decodeLogs(res.data.logs);
@@ -937,13 +1066,6 @@ async function main() {
 
             const topic0 = rawLog.topics[0];
             const tokenAddress = rawLog.address.toLowerCase();
-            tokenAddresses.add(tokenAddress);
-
-            // Track token counts
-            if (!tokenCounts[tokenAddress]) {
-              tokenCounts[tokenAddress] = 0;
-            }
-            tokenCounts[tokenAddress]++;
 
             // Find corresponding transaction for this log
             const txHash = rawLog.transactionHash;
@@ -972,8 +1094,6 @@ async function main() {
                   blockNumber: rawLog.blockNumber,
                   txHash,
                 };
-
-                totalApprovals++;
               }
             } else if (topic0 === TRANSFER_TOPIC) {
               // Get from and to from indexed parameters
@@ -1031,94 +1151,141 @@ async function main() {
       const now = Date.now();
       if (now - lastOutputTime > 300) {
         // Update every 300ms maximum
-        const progress = Math.min(1, res.nextBlock / height);
-        const seconds = (performance.now() - startTime) / 1000;
-        const eventsPerSecond = Math.round(totalEvents / seconds);
-        scanStats.eventsPerSecond = eventsPerSecond; // Update global stats
+        const progress = Math.min(1, res.nextBlock / stats.height);
+        const seconds = (performance.now() - stats.startTime) / 1000;
+        stats.eventsPerSecond = Math.round(stats.totalEvents / seconds);
 
-        // Save current progress bar to global state
-        scanStats.progressBar = drawProgressBar(progress);
-
-        // Clear line and update progress
-        process.stdout.write("\r" + " ".repeat(100) + "\r");
-        process.stdout.write(
-          `${scanStats.progressBar} Block: ${formatNumber(
-            res.nextBlock
-          )}/${formatNumber(height)} | ` +
-            `Events: ${formatNumber(totalEvents)} | ` +
-            `Speed: ${formatNumber(eventsPerSecond)}/s`
-        );
+        // Update progress bar using safe color
+        stats.progressBar = drawProgressBar(progress, 40, colorName);
 
         lastOutputTime = now;
       }
+    } catch (error) {
+      // Log error but continue processing
+      console.error(
+        chalk.red(`Error processing chain ${chainId}: ${error.message}`)
+      );
     }
+  }
 
-    // Processing complete
-    scanStats.endTime = performance.now() - startTime;
+  // Processing complete
+  stats.endTime = performance.now() - stats.startTime;
 
-    console.log(
-      chalk.green(
-        `\n✨ Scan complete: ${formatNumber(
-          totalEvents
-        )} events in ${scanStats.endTime.toFixed(1)} seconds\n`
-      )
-    );
+  return { approvals, transfersUsingApprovals };
+}
 
-    // Process and display approvals
+// Main function
+async function main() {
+  // Clear the screen and show welcome message
+  console.clear();
+  console.log(
+    chalk.bold.cyan(figlet.textSync("snubb", { font: "ANSI Shadow" }))
+  );
+  console.log(chalk.bold.cyan("multichain token approval scanner\n"));
+  console.log(chalk.yellow(`Address: ${chalk.green(TARGET_ADDRESS)}\n`));
+
+  // Show which chains will be scanned
+  console.log(chalk.yellow("Scanning chains:"));
+  for (const chainId of CHAIN_IDS) {
+    const chain = SUPPORTED_CHAINS[chainId] || {
+      name: `Chain ${chainId}`,
+      color: "white",
+    };
+    console.log(`  - ${chalk[chain.color](chain.name)}`);
+  }
+  console.log("");
+
+  // Initialize spinner
+  let spinner = ora({
+    text: "Connecting to chains...",
+    color: "cyan",
+  }).start();
+
+  try {
+    // Scan all chains in parallel
+    const scanPromises = CHAIN_IDS.map((chainId) => scanChain(chainId));
+    const results = await Promise.all(scanPromises);
+
+    spinner.succeed("All chains scanned successfully");
+
+    // Process approvals from all chains
     approvalsList = [];
 
-    // Prepare approvals for display
-    for (const tokenAddress in approvals) {
-      for (const spender in approvals[tokenAddress]) {
-        const {
-          amount: approvedAmount,
-          blockNumber,
-          txHash,
-        } = approvals[tokenAddress][spender];
-        const transferredAmount =
-          transfersUsingApprovals[tokenAddress]?.[spender] || BigInt(0);
+    // Combine results from all chains
+    results.forEach(({ approvals, transfersUsingApprovals }, index) => {
+      const chainId = CHAIN_IDS[index];
+      let chainApprovalsCount = 0;
 
-        // Calculate remaining approval
-        let remainingApproval;
-        let isUnlimited = false;
-
-        // Check for unlimited approval (common values)
-        if (
-          approvedAmount === BigInt(2) ** BigInt(256) - BigInt(1) ||
-          approvedAmount ===
-            BigInt(
-              "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-            ) ||
-          isEffectivelyUnlimited(approvedAmount)
-        ) {
-          remainingApproval = approvedAmount;
-          isUnlimited = true;
-        } else {
-          remainingApproval =
-            approvedAmount > transferredAmount
-              ? approvedAmount - transferredAmount
-              : BigInt(0);
-        }
-
-        // Only show non-zero remaining approvals
-        if (remainingApproval > 0) {
-          approvalsList.push({
-            tokenAddress,
-            spender,
-            approvedAmount,
-            transferredAmount,
-            remainingApproval,
-            isUnlimited,
+      // Process approvals for this chain
+      for (const tokenAddress in approvals) {
+        for (const spender in approvals[tokenAddress]) {
+          const {
+            amount: approvedAmount,
             blockNumber,
             txHash,
-          });
+          } = approvals[tokenAddress][spender];
+          const transferredAmount =
+            transfersUsingApprovals[tokenAddress]?.[spender] || BigInt(0);
+
+          // Calculate remaining approval
+          let remainingApproval;
+          let isUnlimited = false;
+
+          // Check for unlimited approval (common values)
+          if (
+            approvedAmount === BigInt(2) ** BigInt(256) - BigInt(1) ||
+            approvedAmount ===
+              BigInt(
+                "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              ) ||
+            isEffectivelyUnlimited(approvedAmount)
+          ) {
+            remainingApproval = approvedAmount;
+            isUnlimited = true;
+          } else {
+            remainingApproval =
+              approvedAmount > transferredAmount
+                ? approvedAmount - transferredAmount
+                : BigInt(0);
+          }
+
+          // Only show non-zero remaining approvals
+          if (remainingApproval > 0) {
+            approvalsList.push({
+              chainId,
+              tokenAddress,
+              spender,
+              approvedAmount,
+              transferredAmount,
+              remainingApproval,
+              isUnlimited,
+              blockNumber,
+              txHash,
+            });
+            chainApprovalsCount++;
+          }
         }
       }
-    }
+
+      // Update chain stats with approval count
+      if (chainStats[chainId]) {
+        chainStats[chainId].approvalsCount = chainApprovalsCount;
+      }
+    });
 
     // Sort approvals with priority: unlimited first, then by amount (largest to smallest), then by token
     approvalsList.sort((a, b) => {
-      // First by unlimited status (unlimited first)
+      // First by chain ID
+      if (a.chainId !== b.chainId) {
+        return a.chainId - b.chainId;
+      }
+
+      // Then by token address within the same chain
+      if (a.tokenAddress !== b.tokenAddress) {
+        return a.tokenAddress.localeCompare(b.tokenAddress);
+      }
+
+      // Then by unlimited status (unlimited first)
       if (a.isUnlimited && !b.isUnlimited) return -1;
       if (!a.isUnlimited && b.isUnlimited) return 1;
 
@@ -1128,50 +1295,8 @@ async function main() {
         if (b.remainingApproval < a.remainingApproval) return -1;
       }
 
-      // Finally by token address
-      return a.tokenAddress.localeCompare(b.tokenAddress);
+      return 0;
     });
-
-    // Group approvals by token (for display)
-    groupedApprovals = approvalsList.reduce((groups, approval) => {
-      const { tokenAddress } = approval;
-      if (!groups[tokenAddress]) {
-        groups[tokenAddress] = [];
-      }
-      groups[tokenAddress].push(approval);
-      return groups;
-    }, {});
-
-    // Reorder the flat list to ensure tokens are grouped together
-    // while maintaining the priority order within each token group
-    const newOrderedList = [];
-
-    // Get unique token addresses in the order they first appear in the sorted list
-    const tokenOrder = [];
-    approvalsList.forEach((approval) => {
-      if (!tokenOrder.includes(approval.tokenAddress)) {
-        tokenOrder.push(approval.tokenAddress);
-      }
-    });
-
-    // Build new ordered list preserving inner sorting but grouping by token
-    tokenOrder.forEach((tokenAddress) => {
-      const approvalsForToken = groupedApprovals[tokenAddress];
-      // Sort approvals within each token group: unlimited first, then by amount
-      approvalsForToken.sort((a, b) => {
-        // First by unlimited status
-        if (a.isUnlimited && !b.isUnlimited) return -1;
-        if (!a.isUnlimited && b.isUnlimited) return 1;
-
-        // Then by remaining approval amount
-        return b.remainingApproval > a.remainingApproval ? 1 : -1;
-      });
-
-      newOrderedList.push(...approvalsForToken);
-    });
-
-    // Replace original list with regrouped list
-    approvalsList = newOrderedList;
 
     // Display summary
     console.log(
@@ -1184,7 +1309,7 @@ async function main() {
 
     if (approvalsList.length === 0) {
       console.log(
-        chalk.green("No outstanding approvals found. Your wallet is secure!")
+        chalk.green("No outstanding approvals found. Your wallets are secure!")
       );
       rl.close();
       process.exit(0);
@@ -1194,14 +1319,7 @@ async function main() {
     displayApprovalsList();
 
     // Start interactive mode
-    console.log(chalk.yellow.bold("\nStarting interactive mode..."));
-    console.log(
-      chalk.yellow("(If commands don't work, try pressing Enter first)\n")
-    );
-
     startInteractivePrompt();
-
-    // Explicitly don't exit - the startInteractivePrompt will handle that
   } catch (error) {
     spinner.fail("Error");
     console.error(chalk.red(`Error: ${error.message}`));
