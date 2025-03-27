@@ -1,0 +1,36 @@
+{
+  "name": "revoke-approvals",
+  "version": "1.0.0",
+  "description": "Terminal UI for finding and revoking Ethereum token approvals",
+  "main": "index.js",
+  "bin": {
+    "revoke-approvals": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "ethereum",
+    "erc20",
+    "approvals",
+    "revoke",
+    "security",
+    "blockchain"
+  ],
+  "author": "",
+  "type": "module",
+  "license": "ISC",
+  "dependencies": {
+    "@envio-dev/hypersync-client": "^0.6.3",
+    "blessed": "^0.1.81",
+    "blessed-contrib": "^4.11.0",
+    "chalk": "^5.4.1",
+    "cli-spinners": "^2.9.2",
+    "commander": "^11.1.0",
+    "figlet": "^1.8.0",
+    "log-update": "^6.1.0",
+    "ora": "^7.0.1",
+    "viem": "^2.24.1"
+  }
+}
