@@ -86,33 +86,15 @@ async function fetchTokenMetadata(tokenAddress, chainId = 1) {
     });
   }
 
-  // Add fallback RPCs based on known networks
-  if (chainId === 1 && rpcUrls.length === 0) {
-    rpcUrls = [
-      "https://rpc.ankr.com/eth",
-      "https://eth.llamarpc.com",
-      "https://ethereum.publicnode.com",
-      "https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161", // Public Infura key
-    ];
-  } else if (chainId === 137 && rpcUrls.length === 0) {
-    // Polygon fallbacks
-    rpcUrls = [
-      "https://polygon-rpc.com",
-      "https://polygon.llamarpc.com",
-      "https://polygon-mainnet.public.blastapi.io",
-    ];
-  } else if (chainId === 56 && rpcUrls.length === 0) {
-    // BSC fallbacks
-    rpcUrls = [
-      "https://bsc-dataseed.binance.org",
-      "https://bsc-dataseed1.defibit.io",
-      "https://bsc-dataseed1.ninicoin.io",
-    ];
-  }
-
   // If no RPCs available, return default values
   if (rpcUrls.length === 0) {
-    return { success: false, name: null, symbol: null, decimals: 18 };
+    return {
+      success: false,
+      name: "Unknown Token",
+      symbol: "???",
+      decimals: 18,
+      formattedName: "Unknown Token (???)",
+    };
   }
 
   // Shuffle RPC URLs to avoid always hitting the same one first
