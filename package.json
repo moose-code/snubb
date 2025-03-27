@@ -1,6 +1,6 @@
 {
   "name": "snubb",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A beautiful terminal UI for scanning blockchain token approvals and tracking your exposure",
   "main": "index.js",
   "bin": {
