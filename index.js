@@ -538,24 +538,22 @@ const formatChainName = (chainId) => {
 function drawProgressBar(progress, width = 40, colorName = "cyan") {
   const filledWidth = Math.floor(width * progress);
   const emptyWidth = width - filledWidth;
-  const filledBar = "█".repeat(filledWidth);
-  const emptyBar = "░".repeat(emptyWidth);
+
+  // Ensure we draw something even at 100%
+  const filledChar = "█";
+  const emptyChar = "░";
+  const filledBar = filledChar.repeat(Math.max(1, filledWidth));
+  const emptyBar = emptyChar.repeat(emptyWidth);
 
   // Safely apply color
   try {
     if (chalk[colorName]) {
-      return `[${chalk[colorName](filledBar)}${emptyBar}] ${(
-        progress * 100
-      ).toFixed(2)}%`;
+      return chalk[colorName](filledBar) + emptyBar;
     } else {
-      return `[${chalk.cyan(filledBar)}${emptyBar}] ${(progress * 100).toFixed(
-        2
-      )}%`;
+      return chalk.cyan(filledBar) + emptyBar;
     }
   } catch (error) {
-    return `[${chalk.cyan(filledBar)}${emptyBar}] ${(progress * 100).toFixed(
-      2
-    )}%`;
+    return chalk.cyan(filledBar) + emptyBar;
   }
 }
 
@@ -615,76 +613,16 @@ async function displayApprovalsList() {
   console.log(
     chalk.bold.cyan(figlet.textSync("snubb", { font: "ANSI Shadow" }))
   );
-  console.log(chalk.bold.cyan("multichain token approval scanner\n"));
+  console.log(
+    chalk.bold.cyan("multichain token approval scanner") +
+      " - " +
+      chalk.cyan("powered by ") +
+      chalk.cyan.underline("envio.dev") +
+      "\n"
+  );
 
-  // Display scan statistics in a more compact layout
-  console.log(chalk.bold.yellow("SCAN STATISTICS"));
-
-  // Create a compact progress bar display for all chains
-  console.log(chalk.bold("\nProgress:"));
-  for (const chainId of CHAIN_IDS) {
-    if (chainStats[chainId]) {
-      const stats = chainStats[chainId];
-      const chainName = SUPPORTED_CHAINS[chainId]?.name || `Chain ${chainId}`;
-      console.log(
-        `  ${formatChainName(chainId)}: ${stats.progressBar} ${chalk.green(
-          "✓ Complete"
-        )}`
-      );
-    }
-  }
-
-  // Display key stats using cli-table3 for professional formatting
-  console.log(chalk.bold("\nSummary:"));
-
-  // Create a new table instance with proper styling
-  const statsTable = new Table({
-    head: [
-      chalk.cyan("CHAIN"),
-      chalk.cyan("HEIGHT"),
-      chalk.cyan("EVENTS"),
-      chalk.cyan("TIME"),
-      chalk.cyan("APPROVALS"),
-    ],
-    colWidths: [15, 15, 10, 8, 10],
-    style: {
-      head: [], // No additional styling for headers
-      border: [], // No additional styling for borders
-      compact: true, // More compact table with less padding
-    },
-  });
-
-  // Add rows to the table from chain stats
-  let totalApprovals = 0;
-  for (const chainId of CHAIN_IDS) {
-    if (chainStats[chainId]) {
-      const stats = chainStats[chainId];
-
-      // Add a row with colored chain name and right-aligned numeric data
-      statsTable.push([
-        formatChainName(chainId), // Already has color applied
-        formatNumber(stats.height),
-        formatNumber(stats.totalEvents),
-        `${(stats.endTime / 1000).toFixed(1)}s`,
-        stats.approvalsCount.toString(),
-      ]);
-
-      totalApprovals += stats.approvalsCount;
-    }
-  }
-
-  // Add a totals row
-  statsTable.push([
-    chalk.bold("TOTAL"),
-    "",
-    "",
-    "",
-    chalk.bold.white(totalApprovals.toString()),
-  ]);
-
-  // Display the table
-  console.log(statsTable.toString());
-  console.log(""); // Add spacing
+  // Display scan progress and summary separately
+  displayScanSummary();
 
   // Calculate page bounds
   const startIdx = currentPage * PAGE_SIZE;
@@ -826,6 +764,87 @@ async function displayApprovalsList() {
 
   // Start fetching metadata in the background
   fetchTokenMetadataInBackground(startIdx, endIdx);
+}
+
+// Function to display progress bars and summary table sequentially
+function displayScanSummary() {
+  // Calculate maximum width needed for chain names
+  const chainNameWidth =
+    Math.max(
+      ...CHAIN_IDS.map((id) => formatChainName(id).length),
+      10 // Minimum width
+    ) + 2; // Add some padding
+
+  // Display progress bars header
+  console.log(chalk.bold.yellow("SCAN PROGRESS"));
+
+  // Display progress bars
+  for (const chainId of CHAIN_IDS) {
+    if (chainStats[chainId]) {
+      const stats = chainStats[chainId];
+      // Use consistent padding and formatting for all chains
+      const chainName = formatChainName(chainId);
+      const paddedChainName = chainName.padEnd(chainNameWidth);
+
+      // Create progress bar line with fixed spacing
+      console.log(
+        `  ${paddedChainName}: [${stats.progressBar}] 100.00% ${chalk.green(
+          "✓ Complete"
+        )}`
+      );
+    }
+  }
+
+  // Create summary table
+  console.log(chalk.bold.yellow("\nSUMMARY"));
+
+  const statsTable = new Table({
+    head: [
+      chalk.cyan("CHAIN"),
+      chalk.cyan("HEIGHT"),
+      chalk.cyan("EVENTS"),
+      chalk.cyan("TIME"),
+      chalk.cyan("APPROVALS"),
+    ],
+    colWidths: [15, 15, 10, 8, 10],
+    style: {
+      head: [], // No additional styling for headers
+      border: [], // No additional styling for borders
+      compact: true, // More compact table with less padding
+    },
+  });
+
+  // Add rows to the table from chain stats
+  let totalApprovals = 0;
+  for (const chainId of CHAIN_IDS) {
+    if (chainStats[chainId]) {
+      const stats = chainStats[chainId];
+
+      // Add a row with colored chain name and right-aligned numeric data
+      statsTable.push([
+        formatChainName(chainId), // Already has color applied
+        formatNumber(stats.height),
+        formatNumber(stats.totalEvents),
+        `${(stats.endTime / 1000).toFixed(1)}s`,
+        stats.approvalsCount.toString(),
+      ]);
+
+      totalApprovals += stats.approvalsCount;
+    }
+  }
+
+  // Add a totals row
+  statsTable.push([
+    chalk.bold("TOTAL"),
+    "",
+    "",
+    "",
+    chalk.bold.white(totalApprovals.toString()),
+  ]);
+
+  // Display the table
+  console.log(statsTable.toString());
+  console.log(""); // Add spacing
 }
 
 // Asynchronous function to fetch token metadata in background
@@ -1314,6 +1333,13 @@ async function main() {
 function displayScanProgress() {
   // No need to clear the screen - we want to see continuous updates
 
+  // Calculate maximum width needed for chain names
+  const chainNameWidth =
+    Math.max(
+      ...CHAIN_IDS.map((id) => formatChainName(id).length),
+      10 // Minimum width
+    ) + 2; // Add some padding
+
   // Display progress for each chain
   for (const chainId of CHAIN_IDS) {
     const stats = chainStats[chainId];
@@ -1346,7 +1372,7 @@ function displayScanProgress() {
 
       // Use a different format for in-progress chains with better alignment
       process.stdout.write(
-        `\r${formatChainName(chainId).padEnd(15)}: ${
+        `\r${formatChainName(chainId).padEnd(chainNameWidth)}: ${
           stats.progressBar
         } Block: ${blockDisplay} | Events: ${eventsDisplay} | ${speedDisplay}     `
       );
@@ -1369,7 +1395,7 @@ function displayScanProgress() {
 
       // Show completed chain with checkmark and better alignment
       process.stdout.write(
-        `\r${formatChainName(chainId).padEnd(15)}: ${
+        `\r${formatChainName(chainId).padEnd(chainNameWidth)}: ${
           stats.progressBar
         } ${chalk.green(
           "✓"
@@ -1380,7 +1406,7 @@ function displayScanProgress() {
     // If not yet started scanning
     else {
       process.stdout.write(
-        `\r${formatChainName(chainId).padEnd(15)}: ${
+        `\r${formatChainName(chainId).padEnd(chainNameWidth)}: ${
           stats.progressBar
         } Waiting to begin scan...        `
       );
