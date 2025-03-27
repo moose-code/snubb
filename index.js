@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { keccak256, toHex } from "viem";
+import { keccak256, toHex, createPublicClient, http, formatUnits } from "viem";
+import { mainnet } from "viem/chains";
 import {
   HypersyncClient,
   LogField,
@@ -14,6 +15,154 @@ import { Command } from "commander";
 import ora from "ora";
 import readline from "readline";
 import boxen from "boxen";
+import fs from "fs";
+import path from "path";
+
+// Import extraRpcs dynamically
+let extraRpcs = {};
+try {
+  const extraRpcsPath = path.resolve("./extraRpcs.js");
+  if (fs.existsSync(extraRpcsPath)) {
+    const module = await import(extraRpcsPath);
+    extraRpcs = module.default || {};
+  }
+} catch (error) {
+  console.warn(
+    chalk.yellow(`Warning: Could not load extraRpcs.js: ${error.message}`)
+  );
+}
+
+// Cache for token metadata
+const tokenMetadataCache = new Map();
+
+// ERC20 ABI for token metadata
+const ERC20_ABI = [
+  {
+    constant: true,
+    inputs: [],
+    name: "name",
+    outputs: [{ name: "", type: "string" }],
+    payable: false,
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    constant: true,
+    inputs: [],
+    name: "symbol",
+    outputs: [{ name: "", type: "string" }],
+    payable: false,
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    constant: true,
+    inputs: [],
+    name: "decimals",
+    outputs: [{ name: "", type: "uint8" }],
+    payable: false,
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+// Fetch token metadata from a list of RPCs with retry logic
+async function fetchTokenMetadata(tokenAddress, chainId = 1) {
+  // Check cache first
+  const cacheKey = `${chainId}:${tokenAddress}`;
+  if (tokenMetadataCache.has(cacheKey)) {
+    return tokenMetadataCache.get(cacheKey);
+  }
+
+  // Get RPC URLs for the chain
+  let rpcUrls = [];
+  if (extraRpcs[chainId]) {
+    extraRpcs[chainId].rpcs.forEach((rpc) => {
+      if (typeof rpc === "string") {
+        rpcUrls.push(rpc);
+      } else if (rpc.url) {
+        rpcUrls.push(rpc.url);
+      }
+    });
+  }
+
+  // Add fallback RPCs based on known networks
+  if (chainId === 1 && rpcUrls.length === 0) {
+    rpcUrls = ["https://rpc.ankr.com/eth", "https://eth.llamarpc.com"];
+  }
+
+  // If no RPCs available, return default values
+  if (rpcUrls.length === 0) {
+    return { success: false, name: null, symbol: null, decimals: 18 };
+  }
+
+  // Try each RPC until one works
+  for (const rpcUrl of rpcUrls) {
+    try {
+      if (rpcUrl.startsWith("wss://")) continue; // Skip WebSocket RPCs for now
+
+      // Create a viem client
+      const client = createPublicClient({
+        chain: mainnet, // This is just for typing, we'll override with custom endpoint
+        transport: http(rpcUrl),
+      });
+
+      // Fetch token metadata (name, symbol, decimals)
+      const [name, symbol, decimals] = await Promise.all([
+        client
+          .readContract({
+            address: tokenAddress,
+            abi: ERC20_ABI,
+            functionName: "name",
+          })
+          .catch(() => "Unknown Token"),
+        client
+          .readContract({
+            address: tokenAddress,
+            abi: ERC20_ABI,
+            functionName: "symbol",
+          })
+          .catch(() => "???"),
+        client
+          .readContract({
+            address: tokenAddress,
+            abi: ERC20_ABI,
+            functionName: "decimals",
+          })
+          .catch(() => 18),
+      ]);
+
+      const metadata = {
+        success: true,
+        name,
+        symbol,
+        decimals,
+        formattedName: `${name} (${symbol})`,
+      };
+
+      // Cache the result
+      tokenMetadataCache.set(cacheKey, metadata);
+      return metadata;
+    } catch (error) {
+      // Continue to the next RPC if this one fails
+      continue;
+    }
+  }
+
+  // If all RPCs failed, return default values
+  return { success: false, name: null, symbol: null, decimals: 18 };
+}
+
+// Format token amounts with proper decimals
+function formatTokenAmount(amount, decimals) {
+  if (!amount) return "0";
+
+  try {
+    return formatUnits(amount, decimals);
+  } catch (error) {
+    return amount.toString();
+  }
+}
 
 // Global variables for interactive mode
 let approvalsList = [];
@@ -49,6 +198,7 @@ program
   .description("Terminal UI for finding and revoking Ethereum token approvals")
   .version("1.0.0")
   .option("-a, --address <address>", "Ethereum address to check approvals for")
+  .option("-c, --chain <chainId>", "Chain ID to scan (default: 1)", "1")
   .parse(process.argv);
 
 const options = program.opts();
@@ -72,9 +222,18 @@ if (!TARGET_ADDRESS) {
       "  revoke-approvals --address 0x7C25a8C86A04f40F2Db0434ab3A24b051FB3cA58\n"
     )
   );
+  console.log(chalk.yellow("Options:"));
+  console.log(
+    chalk.green(
+      "  --chain <chainId>  Chain ID to scan (default: 1 for Ethereum mainnet)\n"
+    )
+  );
 
   process.exit(0);
 }
+
+// Get chain ID from options
+const CHAIN_ID = parseInt(options.chain);
 
 // Normalize address
 TARGET_ADDRESS = TARGET_ADDRESS.toLowerCase();
@@ -110,26 +269,47 @@ const formatNumber = (num) => {
   return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 };
 
-const formatToken = (tokenAddress) => {
+const formatToken = (tokenAddress, tokenMetadata) => {
+  if (tokenMetadata && tokenMetadata.success) {
+    return tokenMetadata.formattedName;
+  }
+
   if (tokenAddress.length <= 12) return tokenAddress;
   return `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-6)}`;
 };
 
-const formatAmount = (amount) => {
+// Check if an amount is effectively unlimited (close to 2^256-1)
+const isEffectivelyUnlimited = (amount) => {
+  // Common unlimited values (2^256-1 and similar large numbers)
+  const MAX_UINT256 = BigInt(
+    "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  );
+  const LARGE_THRESHOLD = MAX_UINT256 - MAX_UINT256 / BigInt(1000); // Within 0.1% of max
+
+  return amount > LARGE_THRESHOLD;
+};
+
+const formatAmount = (amount, tokenMetadata) => {
   if (!amount) return "0";
 
-  // Check for unlimited approval (common value is 2^256-1)
+  // Check for unlimited or very large approval (effectively unlimited)
   if (
     amount === BigInt(2) ** BigInt(256) - BigInt(1) ||
     amount ===
       BigInt(
         "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-      )
+      ) ||
+    isEffectivelyUnlimited(amount)
   ) {
     return "∞ (Unlimited)";
   }
 
-  // Format large numbers with abbr
+  // Format with decimals if available
+  if (tokenMetadata && tokenMetadata.success) {
+    return formatTokenAmount(amount, tokenMetadata.decimals);
+  }
+
+  // Format large numbers with abbr (fallback)
   if (amount > BigInt(1000000000000)) {
     return `${Number(amount / BigInt(1000000000000)).toFixed(2)}T`;
   } else if (amount > BigInt(1000000000)) {
@@ -208,7 +388,7 @@ const createQuery = (fromBlock) => ({
 });
 
 // Function to display the approvals list
-function displayApprovalsList() {
+async function displayApprovalsList() {
   console.clear();
 
   // Display header with logo and stats
@@ -220,6 +400,7 @@ function displayApprovalsList() {
   // Display scan statistics in a box
   const statsContent = [
     `${chalk.yellow("Address:")} ${chalk.green(TARGET_ADDRESS)}`,
+    `${chalk.yellow("Chain ID:")} ${chalk.white(CHAIN_ID)}`,
     `${chalk.yellow("Chain Height:")} ${chalk.white(
       formatNumber(scanStats.height)
     )}`,
@@ -247,12 +428,18 @@ function displayApprovalsList() {
   // Show progress bar (completed)
   console.log(scanStats.progressBar + " " + chalk.green("✓ Complete\n"));
 
-  // Navigation header
+  // Calculate page bounds
+  const startIdx = currentPage * PAGE_SIZE;
+  const endIdx = Math.min(startIdx + PAGE_SIZE, approvalsList.length);
   const totalPages = Math.ceil(approvalsList.length / PAGE_SIZE);
+
+  // Navigation header with enhanced information
   console.log(
     boxen(
       chalk.bold.cyan(
-        `OUTSTANDING APPROVALS (${currentPage + 1}/${totalPages})`
+        `OUTSTANDING APPROVALS (${currentPage + 1}/${totalPages}) - Showing ${
+          startIdx + 1
+        }-${endIdx} of ${approvalsList.length}`
       ),
       {
         padding: { top: 0, bottom: 0, left: 1, right: 1 },
@@ -262,35 +449,53 @@ function displayApprovalsList() {
     )
   );
 
-  // Calculate page bounds
-  const startIdx = currentPage * PAGE_SIZE;
-  const endIdx = Math.min(startIdx + PAGE_SIZE, approvalsList.length);
-
   // Create a table-like structure for approvals with grouped tokens
   console.log(
     chalk.bold(
-      `  ${chalk.cyan("TOKEN/SPENDER")}${" ".repeat(24)}${chalk.magenta(
+      `  ${chalk.cyan("TOKEN/SPENDER")}${" ".repeat(44)}${chalk.magenta(
         "AMOUNT"
       )}`
     )
   );
-  console.log("  " + "─".repeat(50));
+  console.log("  " + "─".repeat(70));
 
   // Group approvals by token for the current page
   let currentTokenAddress = null;
+  let currentTokenMetadata = null;
 
   // Display the approvals in a grouped list for current page
   for (let i = startIdx; i < endIdx; i++) {
     const approval = approvalsList[i];
     const isSelected = i === selectedApprovalIndex;
 
+    // Fetch token metadata if not already cached
+    if (currentTokenAddress !== approval.tokenAddress) {
+      currentTokenMetadata = await fetchTokenMetadata(
+        approval.tokenAddress,
+        CHAIN_ID
+      );
+    }
+
     // Check if this is a new token
     const isNewToken = currentTokenAddress !== approval.tokenAddress;
     if (isNewToken) {
-      // Print token with a different style
-      console.log(`  ${chalk.cyan.bold(approval.tokenAddress)}`);
+      // Print token with a different style and include name if available
+      const tokenDisplay =
+        currentTokenMetadata && currentTokenMetadata.success
+          ? `${chalk.cyan.bold(currentTokenMetadata.name)} (${chalk.cyan(
+              currentTokenMetadata.symbol
+            )})`
+          : chalk.cyan.bold(approval.tokenAddress);
+
+      console.log(`  ${tokenDisplay}`);
       currentTokenAddress = approval.tokenAddress;
     }
+
+    // Update unlimited flag for effectively unlimited values
+    const isEffectiveUnlimited = isEffectivelyUnlimited(
+      approval.remainingApproval
+    );
+    const displayAsUnlimited = approval.isUnlimited || isEffectiveUnlimited;
 
     // Indent spenders under their token
     const prefix = isSelected ? chalk.cyan("→ ") : "    ";
@@ -298,13 +503,15 @@ function displayApprovalsList() {
       ? chalk.yellow.bold(formatToken(approval.spender))
       : chalk.yellow(formatToken(approval.spender));
 
-    const amountPart = approval.isUnlimited
+    const amountPart = displayAsUnlimited
       ? chalk.red.bold(isSelected ? "⚠️ UNLIMITED" : "⚠️ ∞")
-      : chalk.green(formatAmount(approval.remainingApproval));
+      : chalk.green(
+          formatAmount(approval.remainingApproval, currentTokenMetadata)
+        );
 
     // Pad spaces to align columns
     const spenderSpacer = " ".repeat(
-      Math.max(2, 30 - formatToken(approval.spender).length)
+      Math.max(2, 50 - formatToken(approval.spender).length)
     );
 
     // Use different indentation for spenders
@@ -317,6 +524,12 @@ function displayApprovalsList() {
   if (approvalsList.length > 0) {
     const approval = approvalsList[selectedApprovalIndex];
 
+    // Fetch token metadata for the selected approval
+    const tokenMetadata = await fetchTokenMetadata(
+      approval.tokenAddress,
+      CHAIN_ID
+    );
+
     console.log(
       "\n" +
         boxen(chalk.bold.cyan("APPROVAL DETAILS"), {
@@ -326,37 +539,64 @@ function displayApprovalsList() {
         })
     );
 
-    // Create two columns for details
-    const leftColumn = [
-      `${chalk.cyan("Full Token Address:")}`,
-      `${chalk.green(approval.tokenAddress)}`,
-      ``,
-      `${chalk.cyan("Full Spender Address:")}`,
-      `${chalk.green(approval.spender)}`,
+    // Update unlimited flag for effectively unlimited values
+    const isEffectiveUnlimited = isEffectivelyUnlimited(
+      approval.remainingApproval
+    );
+    const displayAsUnlimited = approval.isUnlimited || isEffectiveUnlimited;
+
+    // Create a more readable single-column display
+    const detailsContent = [
+      // Token information
+      tokenMetadata && tokenMetadata.success
+        ? `${chalk.cyan.bold("Token:")} ${chalk.green(tokenMetadata.name)} (${
+            tokenMetadata.symbol
+          })`
+        : `${chalk.cyan.bold("Token:")} ${chalk.green(approval.tokenAddress)}`,
+
+      `${chalk.cyan.bold("Token Address:")} ${chalk.green(
+        approval.tokenAddress
+      )}`,
+      "",
+
+      // Spender information
+      `${chalk.cyan.bold("Spender Address:")} ${chalk.green(approval.spender)}`,
+      "",
+
+      // Approval amounts
+      chalk.cyan.bold("Approval Details:"),
+      `${chalk.yellow("Approved Amount:")} ${chalk.green(
+        displayAsUnlimited
+          ? "∞ (Unlimited)"
+          : formatAmount(approval.approvedAmount, tokenMetadata)
+      )}`,
+      `${chalk.yellow("Used Amount:")} ${chalk.green(
+        formatAmount(approval.transferredAmount, tokenMetadata)
+      )}`,
+      `${chalk.yellow("Remaining:")} ${
+        displayAsUnlimited
+          ? chalk.red.bold("∞ (UNLIMITED)")
+          : chalk.green(formatAmount(approval.remainingApproval, tokenMetadata))
+      }`,
+      "",
+
+      // Transaction information
+      chalk.cyan.bold("Transaction Details:"),
+      `${chalk.yellow("Block Number:")} ${approval.blockNumber}`,
+      `${chalk.yellow("Transaction Hash:")} ${approval.txHash}`,
     ].join("\n");
 
-    const rightColumn = [
-      `${chalk.cyan("Approval Details:")}`,
-      `${chalk.yellow("Approved:")} ${chalk.green(
-        approval.isUnlimited
-          ? "∞ (Unlimited)"
-          : formatAmount(approval.approvedAmount)
-      )}`,
-      `${chalk.yellow("Used:")} ${chalk.green(
-        formatAmount(approval.transferredAmount)
-      )}`,
-      `${chalk.yellow("Remaining:")} ${chalk.green(
-        approval.isUnlimited
-          ? "∞ (Unlimited)"
-          : formatAmount(approval.remainingApproval)
-      )}`,
-      `${chalk.yellow("Block:")} ${approval.blockNumber}  ${chalk.yellow(
-        "Tx:"
-      )} ${formatToken(approval.txHash)}`,
-    ].join("\n");
+    // Display the details
+    console.log(
+      boxen(detailsContent, {
+        padding: 1,
+        borderColor: "blue",
+        borderStyle: "round",
+      })
+    );
 
     // Display warning for unlimited approvals
-    if (approval.isUnlimited) {
+    if (displayAsUnlimited) {
       console.log(
         boxen(
           chalk.bold.white(
@@ -365,21 +605,6 @@ function displayApprovalsList() {
           { padding: 1, borderColor: "red", borderStyle: "round" }
         )
       );
-    }
-
-    // Display two columns side by side
-    const columnWidth = 60;
-    const lines1 = leftColumn.split("\n");
-    const lines2 = rightColumn.split("\n");
-    const maxLines = Math.max(lines1.length, lines2.length);
-
-    for (let i = 0; i < maxLines; i++) {
-      const line1 =
-        i < lines1.length
-          ? lines1[i].padEnd(columnWidth)
-          : " ".repeat(columnWidth);
-      const line2 = i < lines2.length ? lines2[i] : "";
-      console.log(`  ${line1}${line2}`);
     }
   }
 
@@ -768,13 +993,14 @@ async function main() {
         let remainingApproval;
         let isUnlimited = false;
 
-        // Check for unlimited approval
+        // Check for unlimited approval (common values)
         if (
           approvedAmount === BigInt(2) ** BigInt(256) - BigInt(1) ||
           approvedAmount ===
             BigInt(
               "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-            )
+            ) ||
+          isEffectivelyUnlimited(approvedAmount)
         ) {
           remainingApproval = approvedAmount;
           isUnlimited = true;
