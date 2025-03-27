@@ -610,9 +610,7 @@ async function displayApprovalsList() {
   console.clear();
 
   // Display header with logo and stats
-  console.log(
-    chalk.bold.cyan(figlet.textSync("snubb", { font: "ANSI Shadow" }))
-  );
+  console.log(chalk.bold.cyan(figlet.textSync("snubb", { font: "Doom" })));
   console.log(
     chalk.bold.cyan("multichain token approval scanner") +
       " - " +
@@ -977,11 +975,14 @@ function displayApprovalDetails(approval, tokenMetadata) {
 function displayHelpScreen() {
   console.clear();
 
+  console.log(chalk.bold.cyan(figlet.textSync("HELP", { font: "Doom" })));
   console.log(
-    chalk.bold.cyan(figlet.textSync("HELP", { font: "ANSI Shadow" }))
+    chalk.bold.cyan("multichain token approval scanner") +
+      " - " +
+      chalk.cyan("powered by ") +
+      chalk.cyan.underline("envio.dev") +
+      "\n"
   );
-  console.log(chalk.bold.cyan("Multichain Token Approval Scanner\n"));
-
   const helpContent = boxen(
     [
       chalk.bold.yellow("COMMAND REFERENCE"),
@@ -1103,10 +1104,14 @@ function startInteractivePrompt() {
 async function main() {
   // Clear the screen and show welcome message
   console.clear();
+  console.log(chalk.bold.cyan(figlet.textSync("snubb", { font: "Doom" })));
   console.log(
-    chalk.bold.cyan(figlet.textSync("snubb", { font: "ANSI Shadow" }))
+    chalk.bold.cyan("multichain token approval scanner") +
+      " - " +
+      chalk.cyan("powered by ") +
+      chalk.cyan.underline("envio.dev") +
+      "\n"
   );
-  console.log(chalk.bold.cyan("multichain token approval scanner\n"));
   console.log(chalk.yellow(`Address: ${chalk.green(TARGET_ADDRESS)}\n`));
 
   // Show which chains will be scanned
