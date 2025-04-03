@@ -18,11 +18,17 @@ import boxen from "boxen";
 import fs from "fs";
 import path from "path";
 import Table from "cli-table3";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+// Get directory of current module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Import extraRpcs dynamically
 let extraRpcs = {};
 try {
-  const extraRpcsPath = path.resolve("./extraRpcs.js");
+  const extraRpcsPath = path.resolve(__dirname, "./extraRpcs.js");
   if (fs.existsSync(extraRpcsPath)) {
     const module = await import(extraRpcsPath);
     extraRpcs = module.default || {};
@@ -54,7 +60,7 @@ const SAFE_COLORS = [
 // Load chain data from networkCache.json or fetch from API
 let networkData = [];
 try {
-  const networkCachePath = path.resolve("./networkCache.json");
+  const networkCachePath = path.resolve(__dirname, "./networkCache.json");
   if (fs.existsSync(networkCachePath)) {
     networkData = JSON.parse(fs.readFileSync(networkCachePath, "utf8"));
   } else {
