@@ -93,31 +93,33 @@ networkData.forEach((chain) => {
 // Create dynamic SUPPORTED_CHAINS object with colors
 const SUPPORTED_CHAINS = {};
 
-// Add preferred chains first in the specified order
-PREFERRED_CHAINS.forEach((chainName, index) => {
-  const chain = chainNameToData[chainName];
-  if (chain) {
+// First, add all chains from networkCache.json
+networkData.forEach((chain, index) => {
+  if (chain.ecosystem === "evm" && chain.chain_id) {
     // Assign a color from the safe colors array, cycling through them if needed
     const colorIndex = index % SAFE_COLORS.length;
     const color = SAFE_COLORS[colorIndex];
 
-    // Special color assignments for well-known chains
-    let assignedColor = color;
-    if (chainName === "eth") assignedColor = "cyan";
-    else if (chainName === "optimism") assignedColor = "redBright";
-    else if (chainName === "polygon") assignedColor = "magenta";
-    else if (chainName === "arbitrum") assignedColor = "blue";
-    else if (chainName === "base") assignedColor = "blue";
-    else if (chainName === "gnosis") assignedColor = "green";
-    else if (chainName === "avalanche") assignedColor = "red";
+    // Capitalize first letter of chain name
+    const displayName =
+      chain.name.charAt(0).toUpperCase() + chain.name.slice(1);
 
     SUPPORTED_CHAINS[chain.chain_id] = {
-      name: chain.name.charAt(0).toUpperCase() + chain.name.slice(1), // Capitalize first letter
-      color: assignedColor,
+      name: displayName,
+      color: color,
       hypersyncUrl: `http://${chain.chain_id}.hypersync.xyz`,
     };
   }
 });
+
+// Apply special color assignments for well-known chains
+if (SUPPORTED_CHAINS[1]) SUPPORTED_CHAINS[1].color = "cyan"; // Ethereum
+if (SUPPORTED_CHAINS[10]) SUPPORTED_CHAINS[10].color = "redBright"; // Optimism
+if (SUPPORTED_CHAINS[137]) SUPPORTED_CHAINS[137].color = "magenta"; // Polygon
+if (SUPPORTED_CHAINS[42161]) SUPPORTED_CHAINS[42161].color = "blue"; // Arbitrum
+if (SUPPORTED_CHAINS[8453]) SUPPORTED_CHAINS[8453].color = "blue"; // Base
+if (SUPPORTED_CHAINS[100]) SUPPORTED_CHAINS[100].color = "green"; // Gnosis
+if (SUPPORTED_CHAINS[43114]) SUPPORTED_CHAINS[43114].color = "red"; // Avalanche
 
 // If no chains were loaded, provide fallbacks for core chains
 if (Object.keys(SUPPORTED_CHAINS).length === 0) {
@@ -381,9 +383,56 @@ program
     "Comma-separated chain IDs or 'many-networks' to scan multiple networks (default: 1 - Ethereum only)",
     "1"
   )
+  .option(
+    "--list-chains",
+    "Display a list of all supported chains from networkCache.json"
+  )
   .parse(process.argv);
 
 const options = program.opts();
+
+// Check if user wants to list all supported chains
+if (options.listChains) {
+  console.log(
+    chalk.bold.cyan(figlet.textSync("Supported Chains", { font: "Small" }))
+  );
+  console.log(
+    chalk.bold.cyan("List of all supported chains from networkCache.json\n")
+  );
+
+  // Create a table for better display
+  const chainsTable = new Table({
+    head: [
+      chalk.cyan.bold("CHAIN ID"),
+      chalk.cyan.bold("NAME"),
+      chalk.cyan.bold("TIER"),
+    ],
+    colWidths: [12, 25, 12],
+    style: {
+      head: [], // No additional styling for headers
+      border: [], // No additional styling for borders
+    },
+  });
+
+  // Sort networkData by chain ID for easier reading
+  const sortedChains = [...networkData]
+    .filter((chain) => chain.ecosystem === "evm") // Only show EVM chains
+    .sort((a, b) => a.chain_id - b.chain_id);
+
+  // Add each chain to the table
+  sortedChains.forEach((chain) => {
+    chainsTable.push([chain.chain_id.toString(), chain.name, chain.tier]);
+  });
+
+  // Display the table
+  console.log(chainsTable.toString());
+  console.log(
+    `\nTo use: ${chalk.green(
+      "snubb --address <your-address> --chains <comma-separated-chain-ids>"
+    )}`
+  );
+  process.exit(0);
+}
 
 // Check if we have an address
 let TARGET_ADDRESS = options.address;
@@ -423,6 +472,9 @@ if (!TARGET_ADDRESS) {
       )})\n`
     )
   );
+  console.log(
+    chalk.green(`  --list-chains  Display a list of all supported chains\n`)
+  );
 
   process.exit(0);
 }
@@ -441,10 +493,47 @@ if (options.chains.toLowerCase() === "many-networks") {
   }
 } else {
   // Otherwise use the specified chains
-  CHAIN_IDS = options.chains
+  const requestedChainIds = options.chains
     .split(",")
-    .map((id) => parseInt(id.trim()))
-    .filter((id) => SUPPORTED_CHAINS[id]);
+    .map((id) => parseInt(id.trim()));
+
+  for (const chainId of requestedChainIds) {
+    // Check if this chain ID exists in networkData (networkCache.json)
+    const chainData = networkData.find(
+      (chain) => chain.chain_id === chainId && chain.ecosystem === "evm"
+    );
+
+    if (chainData) {
+      // If in networkData, check if already added to SUPPORTED_CHAINS
+      if (!SUPPORTED_CHAINS[chainId]) {
+        // Get a color from SAFE_COLORS
+        const colorIndex = Math.floor(Math.random() * SAFE_COLORS.length);
+        const color = SAFE_COLORS[colorIndex];
+
+        // Add to SUPPORTED_CHAINS
+        SUPPORTED_CHAINS[chainId] = {
+          name:
+            chainData.name.charAt(0).toUpperCase() + chainData.name.slice(1),
+          color: color,
+          hypersyncUrl: `http://${chainId}.hypersync.xyz`,
+        };
+      }
+
+      // Now add to CHAIN_IDS
+      CHAIN_IDS.push(chainId);
+    } else {
+      // Chain not in networkCache.json - this is an error
+      console.error(chalk.red(`Error: Chain ID ${chainId} is not supported.`));
+      console.error(
+        chalk.yellow(
+          `Run '${chalk.green(
+            "snubb --list-chains"
+          )}' to see all supported chains.`
+        )
+      );
+      process.exit(1);
+    }
+  }
 }
 
 // If no valid chains, use Ethereum mainnet
@@ -702,6 +791,22 @@ async function displayApprovalsList() {
       )
     );
   }
+
+  // Add revoke.cash link right above navigation commands
+  const revokeLink = `https://revoke.cash/address/${TARGET_ADDRESS}`;
+  console.log(
+    boxen(
+      chalk.bold.white(
+        `⚠️  REVOKE APPROVALS: ${chalk.bold.cyan.underline(revokeLink)}`
+      ),
+      {
+        padding: { top: 0, bottom: 0, left: 2, right: 2 },
+        margin: { top: 1, bottom: 0 },
+        borderColor: "red",
+        borderStyle: "round",
+      }
+    )
+  );
 
   // Move navigation instructions to the bottom near the input prompt
   console.log(
@@ -1092,7 +1197,26 @@ function displayHelpScreen() {
     }
   );
 
+  // Add a separate, more prominent box for the revoke.cash link
+  const revokeLink = `https://revoke.cash/address/${TARGET_ADDRESS}`;
+  const revokeLinkContent = boxen(
+    [
+      chalk.bold.yellow("⚠️  HOW TO REVOKE APPROVALS ⚠️"),
+      "",
+      `${chalk.white("To manage and revoke token approvals, visit:")}`,
+      "",
+      `${chalk.bold.cyan.underline(revokeLink)}`,
+    ].join("\n"),
+    {
+      padding: { top: 1, bottom: 1, left: 3, right: 3 },
+      margin: { top: 1, bottom: 1 },
+      borderColor: "red",
+      borderStyle: "double",
+    }
+  );
+
   console.log(helpContent);
+  console.log(revokeLinkContent);
 
   // Wait for keypress to return
   process.stdin.once("data", () => {
