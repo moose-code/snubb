@@ -25,11 +25,11 @@
   "author": "moose-code",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/noose-code/snubb.git"
+    "url": "git+https://github.com/moose-code/snubb.git"
   },
-  "homepage": "https://github.com/noose-code/snubb#readme",
+  "homepage": "https://github.com/moose-code/snubb#readme",
   "bugs": {
-    "url": "https://github.com/noose-code/snubb/issues"
+    "url": "https://github.com/moose-code/snubb/issues"
   },
   "type": "module",
   "license": "ISC",
